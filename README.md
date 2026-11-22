@@ -1,28 +1,41 @@
 # 🎁 Amigo Invisible
 
-App web para organizar un sorteo de amigo invisible. Funciona entera en el navegador: sin servidor, sin registro y sin base de datos.
+App web para organizar un sorteo de amigo invisible y enviar a cada participante, por correo, a quién le toca regalar.
+
+👉 **https://jlproyectos.github.io/amigo-invisible/**
 
 ## Funciones
 
-- Datos del evento: nombre, presupuesto y fecha.
-- Lista de participantes (mínimo 3).
+- Datos del evento: nombre, temática, presupuesto y fecha de entrega.
+- Participantes con **nombre, correo y foto** (mínimo 3).
 - **Exclusiones**: parejas que no pueden regalarse entre sí.
-- Sorteo aleatorio en el que nadie se regala a sí mismo y se respetan las exclusiones (si no hay solución posible, lo avisa).
-- **Enlaces secretos** para cada participante: se copian o se envían por WhatsApp; cada enlace solo muestra a quién le toca regalar.
-- **Modo «pasar el móvil»** para revelar el resultado persona a persona en un solo dispositivo.
-- Los datos se guardan en el navegador (`localStorage`) para no perderlos al recargar.
+- Sorteo aleatorio en el que nadie se regala a sí mismo y se respetan las exclusiones.
+- **Envío por correo** a cada participante con el nombre y la foto de la persona a la que le regala.
+- **Enlaces secretos** para compartir por WhatsApp, y modo **«pasar el móvil»** para revelarlo en un solo dispositivo.
 
-> Los enlaces llevan el resultado ofuscado dentro de la URL para evitar spoilers accidentales; no es cifrado fuerte.
+### Privacidad
 
-## Uso local
+- Participantes, correos y fotos se guardan **solo en el navegador** de quien organiza (`localStorage`). No se suben a GitHub.
+- Las fotos se recortan y se reducen (240×240 px) antes de guardarse.
+- Los enlaces secretos llevan el resultado ofuscado en la URL para evitar spoilers accidentales; no es cifrado fuerte.
 
-Abre `index.html` en el navegador. No necesita instalación.
+## Enviar los correos con Google Apps Script
 
-## Publicar con GitHub Pages
+GitHub Pages no puede enviar correos, así que se usa un pequeño script gratuito de Google. Los correos salen de la cuenta de Gmail donde instales el script. **Si no quieres que salgan de tu correo personal, crea una cuenta de Gmail nueva solo para el amigo invisible** (por ejemplo, `amigoinvisible.familia@gmail.com`) y haz estos pasos con ella. Los participantes verán como remitente «Amigo Invisible».
 
-1. En el repositorio, ve a **Settings → Pages**.
-2. En **Source** elige *Deploy from a branch*, rama `main` y carpeta `/ (root)`.
-3. Guarda. En un par de minutos estará en `https://jlproyectos.github.io/amigo-invisible/`.
+1. Con la cuenta que enviará los correos, entra en **https://script.google.com** y pulsa **Nuevo proyecto**.
+2. Borra lo que haya y pega el contenido de [`google-apps-script/Codigo.gs`](google-apps-script/Codigo.gs).
+3. Cambia `CAMBIA-ESTA-CLAVE` por una clave tuya (por ejemplo, `turron-2026-xyz`) y guarda (💾).
+4. Pulsa **Implementar → Nueva implementación**. En el engranaje elige **Aplicación web** y configura:
+   - **Ejecutar como:** Yo
+   - **Quién tiene acceso:** Cualquier usuario
+5. Pulsa **Implementar** y autoriza los permisos. Google avisará de que la app no está verificada: pulsa **Configuración avanzada → Ir a … (no seguro)**. Es normal, porque el script es tuyo.
+6. Copia la **URL de la aplicación web** (termina en `/exec`).
+7. En la web del amigo invisible, abre **✉️ Configurar el envío de correos**, pega la URL y la clave, y pulsa **Probar conexión**.
+
+Gmail permite unos 100 correos al día con una cuenta gratuita.
+
+> Si cambias el script, vuelve a **Implementar → Gestionar implementaciones → Editar → Nueva versión** para que se apliquen los cambios.
 
 ## Archivos
 
@@ -30,4 +43,5 @@ Abre `index.html` en el navegador. No necesita instalación.
 | --- | --- |
 | `index.html` | Estructura de la página |
 | `styles.css` | Estilos (modo claro y oscuro) |
-| `app.js` | Lógica del sorteo, enlaces y almacenamiento |
+| `app.js` | Sorteo, fotos, envío de correos y almacenamiento |
+| `google-apps-script/Codigo.gs` | Script de Google que envía los correos |

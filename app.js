@@ -3,16 +3,27 @@
 
   const STORAGE_KEY = 'amigo-invisible-v1';
   const $ = (id) => document.getElementById(id);
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   // ---------- Estado ----------
-  let state = load() || { event: '', budget: '', date: '', people: [], exclusions: [], pairs: null };
+  const empty = () => ({
+    event: 'Amigo Invisible', theme: 'Relax', budget: 'Entre 20 € y 30 €', date: '2026-12-25',
+    people: [], exclusions: [], pairs: null,
+    scriptUrl: '', scriptKey: '', sent: {},
+  });
+  let state = Object.assign(empty(), load() || {});
+  // Migración: antes los participantes eran solo nombres.
+  state.people = state.people.map((p) => (typeof p === 'string' ? { name: p, email: '', photo: '' } : p));
 
   function load() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
   }
   function save() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch { /* sin almacenamiento */ }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch { $('error').textContent = 'No se ha podido guardar (¿demasiadas fotos?). Prueba con fotos más pequeñas.'; }
   }
+  const names = () => state.people.map((p) => p.name);
+  const person = (name) => state.people.find((p) => p.name === name);
 
   // ---------- Codificación de enlaces secretos ----------
   // Ofusca el contenido para que el nombre no se lea a simple vista en la URL.
@@ -64,6 +75,37 @@
     return solve(0) ? result : null;
   }
 
+  // ---------- Fotos ----------
+  // Recorta la imagen en cuadrado y la reduce para que ocupe poco (~20 KB).
+  function resizePhoto(file, size = 240) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(img.width, img.height);
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = size;
+        canvas.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+        URL.revokeObjectURL(img.src);
+        resolve(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  let photoTarget = null;
+  $('photoInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (!file || !photoTarget) return;
+    try {
+      person(photoTarget).photo = await resizePhoto(file);
+      save(); render();
+    } catch {
+      $('error').textContent = 'No se ha podido leer esa imagen.';
+    }
+  });
+
   // ---------- Render organizador ----------
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
@@ -72,26 +114,48 @@
     return node;
   }
 
+  function avatar(p) {
+    const btn = el('button', {
+      className: `avatar${p.photo ? ' has-photo' : ''}`, type: 'button',
+      title: p.photo ? `Cambiar la foto de ${p.name}` : `Añadir foto de ${p.name}`,
+    });
+    if (p.photo) btn.append(el('img', { src: p.photo, alt: p.name }));
+    else btn.textContent = '📷';
+    btn.addEventListener('click', () => { photoTarget = p.name; $('photoInput').click(); });
+    return btn;
+  }
+
   function render() {
     $('eventName').value = state.event;
     $('budget').value = state.budget;
+    $('theme').value = state.theme;
     $('date').value = state.date;
+    $('scriptUrl').value = state.scriptUrl;
+    $('scriptKey').value = state.scriptKey;
 
-    const list = $('people');
-    list.replaceChildren(...state.people.map((name) => {
-      const del = el('button', { className: 'icon-btn', type: 'button', title: `Quitar a ${name}`, textContent: '✕' });
-      del.addEventListener('click', () => removePerson(name));
-      return el('li', {}, el('span', { textContent: name }), del);
+    $('people').replaceChildren(...state.people.map((p) => {
+      const email = el('input', { type: 'email', value: p.email, placeholder: 'Añade su correo', title: `Correo de ${p.name}` });
+      email.addEventListener('change', () => {
+        p.email = email.value.trim();
+        email.classList.toggle('invalid', !!p.email && !EMAIL_RE.test(p.email));
+        delete state.sent[p.name];
+        save(); renderResults();
+      });
+      const del = el('button', { className: 'icon-btn', type: 'button', title: `Quitar a ${p.name}`, textContent: '✕' });
+      del.addEventListener('click', () => removePerson(p.name));
+      const info = el('div', { className: 'info' }, el('strong', { textContent: p.name }), email);
+      return el('li', {}, el('div', { className: 'person' }, avatar(p), info), del);
     }));
     const n = state.people.length;
+    const noEmail = state.people.filter((p) => !p.email).length;
     $('peopleHint').textContent = n < 3
       ? `Añade al menos 3 participantes (${n} de 3).`
-      : `${n} participantes.`;
+      : `${n} participantes${noEmail ? ` · ${noEmail} sin correo` : ''}.`;
 
-    const options = state.people.map((p) => el('option', { value: p, textContent: p }));
+    const options = names().map((p) => el('option', { value: p, textContent: p }));
     $('exA').replaceChildren(...options.map((o) => o.cloneNode(true)));
     $('exB').replaceChildren(...options.map((o) => o.cloneNode(true)));
-    if (state.people.length > 1) $('exB').selectedIndex = 1;
+    if (n > 1) $('exB').selectedIndex = 1;
 
     $('exclusions').replaceChildren(...state.exclusions.map(([a, b], i) => {
       const del = el('button', { className: 'icon-btn', type: 'button', title: 'Quitar exclusión', textContent: '✕' });
@@ -103,7 +167,7 @@
   }
 
   function linkFor(giver) {
-    const payload = { g: giver, r: state.pairs[giver], e: state.event, b: state.budget, d: state.date };
+    const payload = { g: giver, r: state.pairs[giver], e: state.event, t: state.theme, b: state.budget, d: state.date };
     const base = location.href.split('#')[0];
     return `${base}#s=${encode(payload)}`;
   }
@@ -112,7 +176,7 @@
     const box = $('results');
     if (!state.pairs) { box.hidden = true; return; }
     box.hidden = false;
-    $('links').replaceChildren(...state.people.map((name) => {
+    $('links').replaceChildren(...state.people.map(({ name, email }) => {
       const url = linkFor(name);
       const copy = el('button', { className: 'btn small secondary', type: 'button', textContent: 'Copiar enlace' });
       copy.addEventListener('click', async () => {
@@ -125,44 +189,59 @@
         className: 'btn small', href: `https://wa.me/?text=${encodeURIComponent(msg)}`,
         target: '_blank', rel: 'noopener', textContent: 'WhatsApp',
       });
-      const actions = [copy, wa];
-      if (navigator.share) {
-        const share = el('button', { className: 'btn small ghost', type: 'button', textContent: 'Compartir' });
-        share.addEventListener('click', () => navigator.share({ title: 'Amigo Invisible', text: msg }).catch(() => {}));
-        actions.push(share);
-      }
-      return el('li', {}, el('span', { className: 'name', textContent: name }), ...actions);
+      const sent = state.sent[name];
+      const status = el('span', {
+        className: `status${sent ? ' ok' : ''}`,
+        textContent: !email ? 'Sin correo' : sent ? `✓ Correo enviado a ${email}` : email,
+      });
+      status.dataset.name = name;
+      return el('li', {}, el('span', { className: 'name', textContent: name }), copy, wa, status);
     }));
+  }
+
+  function setStatus(name, text, cls = '') {
+    const s = document.querySelector(`.status[data-name="${CSS.escape(name)}"]`);
+    if (s) { s.textContent = text; s.className = `status ${cls}`; }
   }
 
   // ---------- Acciones ----------
   function invalidate() {
     state.pairs = null;
+    state.sent = {};
     $('error').textContent = '';
+    $('sendSummary').textContent = '';
     save(); render();
   }
 
-  function addPerson(name) {
+  function addPerson(name, email) {
     name = name.trim().replace(/\s+/g, ' ');
-    if (!name) return;
-    if (state.people.some((p) => p.toLowerCase() === name.toLowerCase())) {
+    email = email.trim();
+    if (!name) return false;
+    if (state.people.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
       $('error').textContent = `"${name}" ya está en la lista.`;
-      return;
+      return false;
     }
-    state.people.push(name);
+    if (email && !EMAIL_RE.test(email)) {
+      $('error').textContent = `El correo "${email}" no parece válido.`;
+      return false;
+    }
+    state.people.push({ name, email, photo: '' });
     invalidate();
+    return true;
   }
 
   function removePerson(name) {
-    state.people = state.people.filter((p) => p !== name);
+    state.people = state.people.filter((p) => p.name !== name);
     state.exclusions = state.exclusions.filter(([a, b]) => a !== name && b !== name);
     invalidate();
   }
 
   $('addForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    addPerson($('newName').value);
-    $('newName').value = '';
+    if (addPerson($('newName').value, $('newEmail').value)) {
+      $('newName').value = '';
+      $('newEmail').value = '';
+    }
     $('newName').focus();
   });
 
@@ -175,33 +254,124 @@
     invalidate();
   });
 
-  [['eventName', 'event'], ['budget', 'budget'], ['date', 'date']].forEach(([id, key]) => {
-    $(id).addEventListener('input', (e) => { state[key] = e.target.value; save(); if (state.pairs) renderResults(); });
-  });
+  [['eventName', 'event'], ['theme', 'theme'], ['budget', 'budget'], ['date', 'date'], ['scriptUrl', 'scriptUrl'], ['scriptKey', 'scriptKey']]
+    .forEach(([id, key]) => {
+      $(id).addEventListener('input', (e) => { state[key] = e.target.value.trim(); save(); if (state.pairs && !key.startsWith('script')) renderResults(); });
+    });
 
   $('drawBtn').addEventListener('click', () => {
     $('error').textContent = '';
     if (state.people.length < 3) { $('error').textContent = 'Necesitas al menos 3 participantes.'; return; }
-    const pairs = draw(state.people);
+    if (state.pairs && Object.keys(state.sent).length &&
+        !confirm('Ya se enviaron correos de este sorteo. Si lo repites, tendrás que enviarlos otra vez. ¿Seguir?')) return;
+    const pairs = draw(names());
     if (!pairs) {
       $('error').textContent = 'Con estas exclusiones no hay ningún sorteo posible. Quita alguna e inténtalo de nuevo.';
       return;
     }
     state.pairs = pairs;
+    state.sent = {};
+    $('sendSummary').textContent = '';
     save(); renderResults();
     $('results').scrollIntoView({ behavior: 'smooth' });
   });
 
   $('resetBtn').addEventListener('click', () => {
-    if (!confirm('¿Borrar participantes, exclusiones y sorteo?')) return;
-    state = { event: '', budget: '', date: '', people: [], exclusions: [], pairs: null };
+    if (!confirm('¿Borrar participantes, fotos, exclusiones y sorteo? (Se mantiene la configuración del correo)')) return;
+    const { scriptUrl, scriptKey } = state;
+    state = Object.assign(empty(), { scriptUrl, scriptKey });
     invalidate();
+  });
+
+  // ---------- Envío de correos (Google Apps Script) ----------
+  function formatDate(iso) {
+    if (!iso) return '';
+    const d = new Date(`${iso}T12:00:00`);
+    return isNaN(d) ? iso : d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  async function callScript(payload) {
+    // text/plain evita la petición previa CORS, que Apps Script no admite.
+    const res = await fetch(state.scriptUrl, { method: 'POST', body: JSON.stringify({ key: state.scriptKey, ...payload }) });
+    return res.json();
+  }
+
+  function mailConfigOk() {
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(state.scriptUrl) || !state.scriptKey) {
+      $('mailConfig').open = true;
+      $('mailConfig').scrollIntoView({ behavior: 'smooth' });
+      $('testStatus').textContent = 'Falta la URL del script (debe terminar en /exec) o la clave.';
+      $('testStatus').className = 'hint fail';
+      return false;
+    }
+    return true;
+  }
+
+  $('testMail').addEventListener('click', async () => {
+    if (!mailConfigOk()) return;
+    $('testStatus').textContent = 'Probando…';
+    $('testStatus').className = 'hint';
+    try {
+      const r = await callScript({ test: true });
+      $('testStatus').textContent = r.ok
+        ? `✓ Conectado. Te quedan ${r.quota} correos hoy.`
+        : `✕ ${r.error}`;
+      $('testStatus').className = `hint ${r.ok ? 'ok' : 'fail'}`;
+    } catch {
+      $('testStatus').textContent = '✕ No se pudo conectar. Revisa la URL y que el script esté publicado para «Cualquier usuario».';
+      $('testStatus').className = 'hint fail';
+    }
+  });
+
+  $('sendAll').addEventListener('click', async () => {
+    if (!state.pairs || !mailConfigOk()) return;
+    const pending = state.people.filter((p) => p.email && !state.sent[p.name]);
+    const missing = state.people.filter((p) => !p.email).map((p) => p.name);
+    if (!pending.length) {
+      $('sendSummary').textContent = missing.length
+        ? `No hay correos pendientes. Sin correo: ${missing.join(', ')}.`
+        : 'Todos los correos ya se han enviado.';
+      return;
+    }
+    if (!confirm(`Se enviarán ${pending.length} correo(s).${missing.length ? `\nSin correo (no recibirán nada): ${missing.join(', ')}.` : ''}\n¿Enviar?`)) return;
+
+    const btn = $('sendAll');
+    btn.disabled = true;
+    let ok = 0, fail = 0;
+    for (const p of pending) {
+      setStatus(p.name, 'Enviando…');
+      const receiver = person(state.pairs[p.name]);
+      try {
+        const r = await callScript({
+          to: p.email,
+          giver: p.name,
+          receiver: receiver.name,
+          photo: receiver.photo || '',
+          event: state.event,
+          theme: state.theme,
+          budget: state.budget,
+          date: formatDate(state.date),
+          link: linkFor(p.name),
+        });
+        if (!r.ok) throw new Error(r.error);
+        state.sent[p.name] = true;
+        save();
+        setStatus(p.name, `✓ Correo enviado a ${p.email}`, 'ok');
+        ok++;
+      } catch (err) {
+        setStatus(p.name, `✕ No se pudo enviar: ${err.message || 'error de conexión'}`, 'fail');
+        fail++;
+      }
+    }
+    btn.disabled = false;
+    $('sendSummary').textContent = `${ok} enviado(s)${fail ? `, ${fail} con error (pulsa otra vez para reintentar)` : ''}.`
+      + (missing.length ? ` Sin correo: ${missing.join(', ')}.` : '');
   });
 
   // ---------- Modo "pasar el móvil" ----------
   let passIndex = 0;
   function showPass() {
-    const name = state.people[passIndex];
+    const { name } = state.people[passIndex];
     $('passTitle').textContent = `Turno de ${name}`;
     $('passText').textContent = `Pasa el dispositivo a ${name}. Nadie más debe mirar.`;
     $('passBox').hidden = true;
@@ -214,9 +384,12 @@
     showPass();
   });
   $('passShow').addEventListener('click', () => {
-    const name = state.people[passIndex];
+    const { name } = state.people[passIndex];
+    const receiver = person(state.pairs[name]);
     $('passText').textContent = `${name}, le regalas a:`;
-    $('passBox').textContent = state.pairs[name];
+    $('passName').textContent = receiver.name;
+    $('passPhoto').hidden = !receiver.photo;
+    if (receiver.photo) $('passPhoto').src = receiver.photo;
     $('passBox').hidden = false;
     $('passShow').hidden = true;
     $('passNext').hidden = false;
@@ -227,15 +400,10 @@
     if (passIndex >= state.people.length) { exitPass(); return; }
     showPass();
   });
-  function exitPass() { $('passMode').hidden = true; $('organizer').hidden = false; }
+  function exitPass() { $('passMode').hidden = true; $('organizer').hidden = false; $('passPhoto').src = ''; }
   $('passExit').addEventListener('click', exitPass);
 
   // ---------- Vista de enlace secreto ----------
-  function formatDate(iso) {
-    const d = new Date(`${iso}T12:00:00`);
-    return isNaN(d) ? iso : d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  }
-
   function route() {
     const m = location.hash.match(/^#s=([\w-]+)$/);
     if (!m) { $('secret').hidden = true; $('organizer').hidden = false; render(); return; }
@@ -252,6 +420,7 @@
     $('secretBox').hidden = true;
     $('giftBtn').hidden = false;
     const info = [];
+    if (data.t) info.push(`Temática: ${data.t}`);
     if (data.b) info.push(`Presupuesto: ${data.b}`);
     if (data.d) info.push(`Fecha: ${formatDate(data.d)}`);
     $('secretInfo').textContent = '';

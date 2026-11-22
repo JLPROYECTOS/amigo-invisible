@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Amigo Invisible</title>
-  <meta name="description" content="Organiza un sorteo de amigo invisible: añade participantes, define exclusiones y comparte enlaces secretos.">
+  <meta name="description" content="Organiza un sorteo de amigo invisible: añade participantes, define exclusiones y envía a cada uno su resultado por correo.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="hero">
     <h1>🎁 Amigo Invisible</h1>
-    <p>Organiza el sorteo en un minuto y envía a cada persona su enlace secreto.</p>
+    <p>Organiza el sorteo en un minuto y cada persona recibirá por correo a quién le toca regalar.</p>
   </header>
 
   <main id="app">
@@ -23,10 +23,13 @@
           <label>Nombre del evento
             <input id="eventName" type="text" placeholder="Navidad en familia" maxlength="60">
           </label>
-          <label>Presupuesto
-            <input id="budget" type="text" placeholder="20 €" maxlength="20">
+          <label>Temática
+            <input id="theme" type="text" placeholder="Relax" maxlength="40">
           </label>
-          <label>Fecha del intercambio
+          <label>Presupuesto
+            <input id="budget" type="text" placeholder="Entre 20 € y 30 €" maxlength="30">
+          </label>
+          <label>Fecha de entrega
             <input id="date" type="date">
           </label>
         </div>
@@ -36,10 +39,13 @@
         <h2>2. Participantes</h2>
         <form id="addForm" class="row">
           <input id="newName" type="text" placeholder="Nombre" maxlength="40" autocomplete="off" required>
+          <input id="newEmail" type="email" placeholder="correo@ejemplo.com" maxlength="100" autocomplete="off">
           <button type="submit" class="btn">Añadir</button>
         </form>
+        <p class="hint">Pulsa el círculo de cada persona para ponerle una foto. Las fotos se guardan solo en este navegador.</p>
         <ul id="people" class="people"></ul>
         <p id="peopleHint" class="hint"></p>
+        <input id="photoInput" type="file" accept="image/*" hidden>
       </div>
 
       <div class="card">
@@ -54,6 +60,25 @@
         <ul id="exclusions" class="chips"></ul>
       </div>
 
+      <details class="card" id="mailConfig">
+        <summary><h2>✉️ Configurar el envío de correos</h2></summary>
+        <p class="hint">Los correos se envían desde tu Gmail con un pequeño script de Google. Solo hay que configurarlo una vez:
+          sigue los pasos de <a href="https://github.com/JLPROYECTOS/amigo-invisible#enviar-los-correos-con-google-apps-script" target="_blank" rel="noopener">las instrucciones</a>
+          y pega aquí la dirección del script y tu clave.</p>
+        <div class="grid">
+          <label>URL del script (termina en /exec)
+            <input id="scriptUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+          </label>
+          <label>Clave secreta
+            <input id="scriptKey" type="password" placeholder="La misma que pusiste en el script" autocomplete="off">
+          </label>
+        </div>
+        <div class="row">
+          <button id="testMail" class="btn secondary" type="button">Probar conexión</button>
+          <span id="testStatus" class="hint"></span>
+        </div>
+      </details>
+
       <div class="actions">
         <button id="drawBtn" class="btn big" type="button">🎲 Hacer el sorteo</button>
         <button id="resetBtn" class="btn ghost" type="button">Empezar de nuevo</button>
@@ -61,8 +86,12 @@
       <p id="error" class="error" role="alert"></p>
 
       <div id="results" class="card" hidden>
-        <h2>4. Envía los enlaces secretos</h2>
-        <p class="hint">Cada enlace muestra solo a quién le toca regalar esa persona. No los abras tú si también participas 😉</p>
+        <h2>4. Avisa a cada persona</h2>
+        <p class="hint">Envía los correos de una vez o comparte el enlace secreto de cada uno. Ni tú verás a quién le toca a cada persona 😉</p>
+        <div class="actions">
+          <button id="sendAll" class="btn big" type="button">✉️ Enviar los correos</button>
+        </div>
+        <p id="sendSummary" class="hint center"></p>
         <ul id="links" class="links"></ul>
         <div class="row">
           <button id="revealBtn" class="btn secondary" type="button">📱 Revelar en este dispositivo</button>
@@ -75,7 +104,10 @@
       <div class="card center">
         <h2 id="passTitle"></h2>
         <p id="passText" class="hint"></p>
-        <div id="passBox" class="reveal-box" hidden></div>
+        <div id="passBox" hidden>
+          <img id="passPhoto" class="big-photo" alt="" hidden>
+          <div id="passName" class="reveal-box"></div>
+        </div>
         <div class="actions">
           <button id="passShow" class="btn big" type="button">Soy yo, mostrar</button>
           <button id="passNext" class="btn big" type="button" hidden>Ocultar y pasar</button>
@@ -98,7 +130,7 @@
     </section>
   </main>
 
-  <footer>Hecho con ❤️ · Todo funciona en tu navegador, sin servidores.</footer>
+  <footer>Hecho con ❤️ · Todo funciona en tu navegador.</footer>
   <script src="app.js"></script>
 </body>
 </html>
