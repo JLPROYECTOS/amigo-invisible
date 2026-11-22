@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amigo Invisible</title>
+  <meta name="description" content="Organiza un sorteo de amigo invisible: añade participantes, define exclusiones y comparte enlaces secretos.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="hero">
+    <h1>🎁 Amigo Invisible</h1>
+    <p>Organiza el sorteo en un minuto y envía a cada persona su enlace secreto.</p>
+  </header>
+
+  <main id="app">
+    <!-- Vista del organizador -->
+    <section id="organizer">
+      <div class="card">
+        <h2>1. El evento</h2>
+        <div class="grid">
+          <label>Nombre del evento
+            <input id="eventName" type="text" placeholder="Navidad en familia" maxlength="60">
+          </label>
+          <label>Presupuesto
+            <input id="budget" type="text" placeholder="20 €" maxlength="20">
+          </label>
+          <label>Fecha del intercambio
+            <input id="date" type="date">
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>2. Participantes</h2>
+        <form id="addForm" class="row">
+          <input id="newName" type="text" placeholder="Nombre" maxlength="40" autocomplete="off" required>
+          <button type="submit" class="btn">Añadir</button>
+        </form>
+        <ul id="people" class="people"></ul>
+        <p id="peopleHint" class="hint"></p>
+      </div>
+
+      <div class="card">
+        <h2>3. Exclusiones <span class="muted">(opcional)</span></h2>
+        <p class="hint">Parejas que no deben regalarse entre sí (por ejemplo, quienes viven juntos).</p>
+        <div class="row">
+          <select id="exA"></select>
+          <span class="muted">↔</span>
+          <select id="exB"></select>
+          <button id="addEx" class="btn secondary" type="button">Añadir</button>
+        </div>
+        <ul id="exclusions" class="chips"></ul>
+      </div>
+
+      <div class="actions">
+        <button id="drawBtn" class="btn big" type="button">🎲 Hacer el sorteo</button>
+        <button id="resetBtn" class="btn ghost" type="button">Empezar de nuevo</button>
+      </div>
+      <p id="error" class="error" role="alert"></p>
+
+      <div id="results" class="card" hidden>
+        <h2>4. Envía los enlaces secretos</h2>
+        <p class="hint">Cada enlace muestra solo a quién le toca regalar esa persona. No los abras tú si también participas 😉</p>
+        <ul id="links" class="links"></ul>
+        <div class="row">
+          <button id="revealBtn" class="btn secondary" type="button">📱 Revelar en este dispositivo</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Revelado uno a uno en el mismo dispositivo -->
+    <section id="passMode" hidden>
+      <div class="card center">
+        <h2 id="passTitle"></h2>
+        <p id="passText" class="hint"></p>
+        <div id="passBox" class="reveal-box" hidden></div>
+        <div class="actions">
+          <button id="passShow" class="btn big" type="button">Soy yo, mostrar</button>
+          <button id="passNext" class="btn big" type="button" hidden>Ocultar y pasar</button>
+          <button id="passExit" class="btn ghost" type="button">Salir</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Vista de quien abre un enlace secreto -->
+    <section id="secret" hidden>
+      <div class="card center">
+        <p class="muted" id="secretEvent"></p>
+        <h2>Hola, <span id="secretGiver"></span> 👋</h2>
+        <p>Pulsa el regalo para descubrir a quién le haces el regalo.</p>
+        <button id="giftBtn" class="gift" type="button" aria-label="Abrir regalo">🎁</button>
+        <div id="secretBox" class="reveal-box" hidden></div>
+        <p id="secretInfo" class="hint"></p>
+        <p><a href="./" class="muted">Organizar mi propio sorteo</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>Hecho con ❤️ · Todo funciona en tu navegador, sin servidores.</footer>
+  <script src="app.js"></script>
+</body>
+</html>
