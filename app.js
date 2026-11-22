@@ -74,7 +74,7 @@
     if (!ev) return;
     const bits = [ev.tematica && `Temática: ${ev.tematica}`, ev.presupuesto, ev.fecha && `Entrega: ${ev.fecha}`].filter(Boolean);
     $('eventLine').textContent = [ev.nombre, bits.join(' · ')].filter(Boolean).join(' — ');
-    if (ev.nombre) document.title = `${ev.nombre} · Amigo Invisible`;
+    if (ev.nombre && ev.nombre !== 'Amigo Invisible') document.title = `${ev.nombre} · Amigo Invisible`;
   }
 
   // Recorta en cuadrado y reduce la foto hasta que quepa en una celda de la hoja.
@@ -176,7 +176,9 @@
     const nombre = $('regName').value.trim().replace(/\s+/g, ' ');
     if (!nombre) { $('regError').textContent = 'Escribe el nombre.'; return; }
     if (!regPhoto) { $('regError').textContent = 'Falta la foto: toca el círculo para elegirla.'; return; }
+    const label = $('regSubmit').textContent;
     $('regSubmit').disabled = true;
+    $('regSubmit').textContent = 'Enviando…';
     $('regError').textContent = '';
     try {
       await api('registrar', { nombre, foto: regPhoto, terminal: terminal(), prestado: regBorrowed });
@@ -185,6 +187,7 @@
       $('regError').textContent = err.message;
     } finally {
       $('regSubmit').disabled = false;
+      $('regSubmit').textContent = label;
     }
   });
 
