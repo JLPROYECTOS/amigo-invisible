@@ -498,6 +498,8 @@
 
   // ---------- Arranque ----------
   function start() {
+    // Acceso oculto al panel: el corazón del pie de página.
+    if (EVENT_ID) $('heart').href = IS_ADMIN ? `?e=${EVENT_ID}` : `?e=${EVENT_ID}#admin`;
     if (!EVENT_ID) { show('home'); return; }
     if (IS_ADMIN) {
       show('admin');
