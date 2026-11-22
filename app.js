@@ -339,7 +339,7 @@
 
   function confetti() {
     const box = $('confetti');
-    const items = ['🎉', '✨', '🎊', '⭐', '🎁', '❤️'];
+    const items = ['🫒', '🫒', '🫒', '🌿', '✨', '💛', '🎉'];
     box.replaceChildren(...Array.from({ length: 40 }, () => {
       const s = el('span', { textContent: items[Math.floor(Math.random() * items.length)] });
       s.style.left = `${Math.random() * 100}%`;
