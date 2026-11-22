@@ -143,7 +143,10 @@
       });
       const del = el('button', { className: 'icon-btn', type: 'button', title: `Quitar a ${p.name}`, textContent: '✕' });
       del.addEventListener('click', () => removePerson(p.name));
-      const info = el('div', { className: 'info' }, el('strong', { textContent: p.name }), email);
+      const noPhone = el('input', { type: 'checkbox', checked: !!p.noPhone });
+      noPhone.addEventListener('change', () => { p.noPhone = noPhone.checked; save(); renderResults(); });
+      const noPhoneLabel = el('label', { className: 'check', title: 'Podrá verlo en el móvil de otra persona sin bloquearlo' }, noPhone, 'Sin móvil');
+      const info = el('div', { className: 'info' }, el('strong', { textContent: p.name }), email, noPhoneLabel);
       return el('li', {}, el('div', { className: 'person' }, avatar(p), info), del);
     }));
     const n = state.people.length;
@@ -172,10 +175,31 @@
     return `${base}#s=${encode(payload)}`;
   }
 
+  // Un único enlace con todo el sorteo: cada persona elige su nombre al abrirlo.
+  function groupLink() {
+    if (!state.drawId) { state.drawId = Math.random().toString(36).slice(2, 10); save(); }
+    const n = names();
+    const payload = {
+      id: state.drawId, n, r: n.map((g) => n.indexOf(state.pairs[g])),
+      x: state.people.map((p, i) => (p.noPhone ? i : -1)).filter((i) => i >= 0),
+      e: state.event, t: state.theme, b: state.budget, d: state.date,
+    };
+    return `${location.href.split('#')[0]}#g=${encode(payload)}`;
+  }
+
   function renderResults() {
     const box = $('results');
     if (!state.pairs) { box.hidden = true; return; }
     box.hidden = false;
+    const gUrl = groupLink();
+    const gMsg = `🎁 ¡Ya está hecho el sorteo del amigo invisible${state.event ? ` "${state.event}"` : ''}! `
+      + `Abrid este enlace, tocad vuestro nombre y veréis a quién le regaláis (¡sin trampas!): ${gUrl}`;
+    $('groupWa').href = `https://wa.me/?text=${encodeURIComponent(gMsg)}`;
+    $('groupCopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(gMsg); $('groupCopy').textContent = '¡Copiado!'; }
+      catch { prompt('Copia este mensaje:', gMsg); }
+      setTimeout(() => { $('groupCopy').textContent = 'Copiar enlace'; }, 1500);
+    };
     $('links').replaceChildren(...state.people.map(({ name, email }) => {
       const url = linkFor(name);
       const copy = el('button', { className: 'btn small secondary', type: 'button', textContent: 'Copiar enlace' });
@@ -270,6 +294,7 @@
       return;
     }
     state.pairs = pairs;
+    state.drawId = '';
     state.sent = {};
     $('sendSummary').textContent = '';
     save(); renderResults();
@@ -404,17 +429,122 @@
   $('passExit').addEventListener('click', exitPass);
 
   // ---------- Vista de enlace secreto ----------
+  function showOnly(id) {
+    ['organizer', 'passMode', 'secret', 'group'].forEach((s) => { $(s).hidden = s !== id; });
+  }
+
+  function badLink() {
+    showOnly('organizer'); render();
+    $('error').textContent = 'El enlace no es válido.';
+  }
+
+  // Enlace de grupo. Cada móvil queda "bloqueado" para su dueño (me), pero puede
+  // prestarse a las personas marcadas como "sin móvil" sin bloquearse para ellas.
+  function showGroup(data) {
+    const lockKey = `amigo-grupo-${data.id}`;
+    const noPhone = (data.x || []).map((i) => data.n[i]).filter(Boolean);
+    let lock = { me: '', lent: [] };
+    try {
+      const raw = localStorage.getItem(lockKey);
+      if (raw) lock = Object.assign(lock, JSON.parse(raw));
+    } catch { /* sin almacenamiento o formato antiguo */ }
+    const saveLock = () => { try { localStorage.setItem(lockKey, JSON.stringify(lock)); } catch { /* sin almacenamiento */ } };
+    if (lock.me && !data.n.includes(lock.me)) lock.me = '';
+
+    const secretFor = (name) => {
+      const i = data.n.indexOf(name);
+      return { g: name, r: data.n[data.r[i]], e: data.e, t: data.t, b: data.b, d: data.d };
+    };
+    const lendable = () => noPhone.filter((n) => n !== lock.me);
+
+    function lendButton() {
+      if (!lendable().length) return [];
+      const b = el('button', { className: 'btn ghost', type: 'button', textContent: '📱 Prestar el móvil a alguien sin móvil' });
+      b.addEventListener('click', () => pick(lendable(), 'lend'));
+      return [b];
+    }
+
+    function showMine() {
+      showSecret(secretFor(lock.me), lendButton());
+    }
+
+    function showLent(name) {
+      const done = el('button', { className: 'btn big secondary', type: 'button', textContent: 'Ocultar y devolver el móvil' });
+      done.addEventListener('click', () => {
+        if (lock.me) { showMine(); return; }
+        pick(data.n, 'self');
+      });
+      showSecret(secretFor(name), [done]);
+    }
+
+    // mode: 'self' = elegir quién soy; 'lend' = elegir a quién presto el móvil.
+    function pick(list, mode) {
+      showOnly('group');
+      $('groupEvent').textContent = data.e || 'Amigo Invisible';
+      $('groupPick').hidden = false;
+      $('groupConfirm').hidden = true;
+      $('groupPick').querySelector('h2').textContent = mode === 'lend' ? '¿A quién le prestas el móvil?' : '¿Quién eres?';
+      $('groupPick').querySelector('.hint').textContent = mode === 'lend'
+        ? 'Dale el móvil y que toque su nombre. Tú no mires 🙈'
+        : noPhone.length
+          ? `Toca tu nombre. Solo podrás ver el tuyo desde este móvil. Si no tienes móvil (${noPhone.join(', ')}), pide uno prestado.`
+          : 'Toca tu nombre. ¡Sin trampas! Solo podrás ver el tuyo desde este móvil.';
+      const buttons = list.map((name) => {
+        const b = el('button', { className: 'btn', type: 'button', textContent: name });
+        b.addEventListener('click', () => confirmPick(name, mode, list));
+        return b;
+      });
+      if (mode === 'lend') {
+        const back = el('button', { className: 'btn ghost', type: 'button', textContent: '← Volver' });
+        back.addEventListener('click', showMine);
+        buttons.push(back);
+      }
+      $('groupNames').replaceChildren(...buttons);
+    }
+
+    function confirmPick(name, mode, list) {
+      const borrowed = mode === 'lend' || noPhone.includes(name);
+      $('groupConfirmName').textContent = name;
+      $('groupConfirm').querySelector('.hint').textContent = borrowed
+        ? 'Este móvil seguirá siendo de su dueño: solo verás el tuyo y luego lo ocultas.'
+        : 'Después ya no podrás elegir otro nombre en este móvil.';
+      $('groupPick').hidden = true;
+      $('groupConfirm').hidden = false;
+      $('groupYes').onclick = () => {
+        if (borrowed) {
+          if (!lock.lent.includes(name)) lock.lent.push(name);
+          saveLock();
+          showLent(name);
+        } else {
+          lock.me = name;
+          saveLock();
+          showMine();
+        }
+      };
+      $('groupNo').onclick = () => pick(list, mode);
+    }
+
+    if (lock.me) showMine();
+    else pick(data.n, 'self');
+  }
+
   function route() {
-    const m = location.hash.match(/^#s=([\w-]+)$/);
-    if (!m) { $('secret').hidden = true; $('organizer').hidden = false; render(); return; }
+    const m = location.hash.match(/^#([sg])=([\w-]+)$/);
+    if (!m) { showOnly('organizer'); render(); return; }
     let data;
-    try { data = decode(m[1]); } catch { data = null; }
-    if (!data || !data.g || !data.r) {
-      $('secret').hidden = true; $('organizer').hidden = false; render();
-      $('error').textContent = 'El enlace no es válido.';
+    try { data = decode(m[2]); } catch { data = null; }
+    if (m[1] === 'g') {
+      if (!data || !data.id || !Array.isArray(data.n) || !Array.isArray(data.r) || data.n.length !== data.r.length) { badLink(); return; }
+      showGroup(data);
       return;
     }
-    $('organizer').hidden = true; $('passMode').hidden = true; $('secret').hidden = false;
+    if (!data || !data.g || !data.r) { badLink(); return; }
+    showSecret(data);
+  }
+
+  function showSecret(data, extra = []) {
+    showOnly('secret');
+    $('secretExtra').replaceChildren(...extra);
     $('secretEvent').textContent = data.e || 'Amigo Invisible';
     $('secretGiver').textContent = data.g;
     $('secretBox').hidden = true;

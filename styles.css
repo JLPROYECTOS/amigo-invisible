@@ -154,5 +154,14 @@ details.card summary h2 { display: inline; margin: 0; }
 details.card[open] summary { margin-bottom: 8px; }
 a { color: var(--accent-2); }
 .btn:disabled { opacity: .5; cursor: wait; }
+label.check { flex-direction: row; align-items: center; gap: 6px; font-size: .8rem; margin-top: 4px; cursor: pointer; }
+label.check input { width: auto; margin: 0; }
+.group-box {
+  background: var(--chip); border-radius: 12px; padding: 16px; margin-bottom: 16px; text-align: center;
+}
+.group-box h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.name-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
+.name-grid .btn { background: var(--chip); color: var(--text); border: 1px solid var(--border); padding: 14px 10px; }
+.name-grid .btn:hover { border-color: var(--accent); }
 @keyframes pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .gift, .reveal-box, .big-photo { animation: none; } }

@@ -6,7 +6,7 @@
   <title>Amigo Invisible</title>
   <meta name="description" content="Organiza un sorteo de amigo invisible: añade participantes, define exclusiones y envía a cada uno su resultado por correo.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=3">
 </head>
 <body>
   <header class="hero">
@@ -87,7 +87,16 @@
 
       <div id="results" class="card" hidden>
         <h2>4. Avisa a cada persona</h2>
-        <p class="hint">Envía los correos de una vez o comparte el enlace secreto de cada uno. Ni tú verás a quién le toca a cada persona 😉</p>
+        <div class="group-box">
+          <h3>👨‍👩‍👧‍👦 Un solo enlace para el grupo de WhatsApp</h3>
+          <p class="hint">Mándalo al grupo: cada uno lo abre, toca su nombre y ve solo a quién le regala. Su móvil recuerda quién es y no le deja mirar el de otro.
+            Quien no tenga móvil (márcalo arriba con «Sin móvil») puede verlo en el de otra persona.</p>
+          <div class="actions">
+            <a id="groupWa" class="btn big" target="_blank" rel="noopener">Enviar al grupo por WhatsApp</a>
+            <button id="groupCopy" class="btn secondary" type="button">Copiar enlace</button>
+          </div>
+        </div>
+        <p class="hint">O, si lo prefieres, envía los correos de una vez o el enlace individual de cada uno. Ni tú verás a quién le toca a cada persona 😉</p>
         <div class="actions">
           <button id="sendAll" class="btn big" type="button">✉️ Enviar los correos</button>
         </div>
@@ -116,6 +125,26 @@
       </div>
     </section>
 
+    <!-- Vista del enlace de grupo -->
+    <section id="group" hidden>
+      <div class="card center">
+        <p class="muted" id="groupEvent"></p>
+        <div id="groupPick">
+          <h2>¿Quién eres?</h2>
+          <p class="hint">Toca tu nombre. ¡Sin trampas! Solo podrás ver el tuyo desde este móvil.</p>
+          <div id="groupNames" class="name-grid"></div>
+        </div>
+        <div id="groupConfirm" hidden>
+          <h2>¿Seguro que eres <span id="groupConfirmName"></span>?</h2>
+          <p class="hint">Después ya no podrás elegir otro nombre en este móvil.</p>
+          <div class="actions">
+            <button id="groupYes" class="btn big" type="button">Sí, soy yo</button>
+            <button id="groupNo" class="btn ghost" type="button">No, volver</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Vista de quien abre un enlace secreto -->
     <section id="secret" hidden>
       <div class="card center">
@@ -125,12 +154,13 @@
         <button id="giftBtn" class="gift" type="button" aria-label="Abrir regalo">🎁</button>
         <div id="secretBox" class="reveal-box" hidden></div>
         <p id="secretInfo" class="hint"></p>
+        <div id="secretExtra" class="actions"></div>
         <p><a href="./" class="muted">Organizar mi propio sorteo</a></p>
       </div>
     </section>
   </main>
 
   <footer>Hecho con ❤️ · Todo funciona en tu navegador.</footer>
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

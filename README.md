@@ -10,6 +10,7 @@ App web para organizar un sorteo de amigo invisible y enviar a cada participante
 - Participantes con **nombre, correo y foto** (mínimo 3).
 - **Exclusiones**: parejas que no pueden regalarse entre sí.
 - Sorteo aleatorio en el que nadie se regala a sí mismo y se respetan las exclusiones.
+- **Un solo enlace para el grupo de WhatsApp**: cada persona lo abre, toca su nombre y ve solo el suyo. El móvil recuerda a su dueño y no deja ver el de otro. Quien esté marcado como «Sin móvil» puede verlo en un móvil prestado sin bloquearlo.
 - **Envío por correo** a cada participante con el nombre y la foto de la persona a la que le regala.
 - **Enlaces secretos** para compartir por WhatsApp, y modo **«pasar el móvil»** para revelarlo en un solo dispositivo.
 
