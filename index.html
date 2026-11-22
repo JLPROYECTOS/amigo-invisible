@@ -10,30 +10,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
   <header class="hero">
     <!-- Lomas de olivar al atardecer -->
+    <!-- Los olivos se «plantan» con JavaScript sobre el borde de cada loma y se mecen con el aire. -->
     <svg class="olivar" viewBox="0 0 400 130" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-      <defs>
-        <pattern id="olivos" width="18" height="11" patternUnits="userSpaceOnUse">
-          <rect x="8.3" y="5" width="1.4" height="4" class="tronco"/>
-          <circle cx="9" cy="4.5" r="4.2" class="copa"/>
-        </pattern>
-        <pattern id="olivos2" width="13" height="8" patternUnits="userSpaceOnUse" patternTransform="translate(4 2)">
-          <rect x="6" y="3.6" width="1" height="3" class="tronco"/>
-          <circle cx="6.5" cy="3.3" r="3" class="copa2"/>
-        </pattern>
-      </defs>
       <circle cx="320" cy="44" r="22" class="sol"/>
       <path d="M0 78 Q70 50 150 70 T300 62 T400 66 V130 H0Z" class="loma-lejos"/>
-      <path d="M0 78 Q70 50 150 70 T300 62 T400 66 V130 H0Z" fill="url(#olivos2)" opacity=".75"/>
+      <g id="olivosLejos"></g>
       <path d="M0 96 Q90 72 200 92 T400 86 V130 H0Z" class="loma"/>
-      <path d="M0 96 Q90 72 200 92 T400 86 V130 H0Z" fill="url(#olivos)"/>
+      <g id="olivosCerca"></g>
+      <path id="bordeLejos" d="M0 78 Q70 50 150 70 T300 62 T400 66" fill="none"/>
+      <path id="bordeCerca" d="M0 96 Q90 72 200 92 T400 86" fill="none"/>
     </svg>
     <div class="hero-text">
-      <p class="kicker">Jaén · tierra de olivos</p>
       <h1><span class="aceituna" aria-hidden="true"></span>Amigo Invisible</h1>
       <p id="eventLine"></p>
     </div>
@@ -126,8 +118,13 @@
     <section id="v-who" class="view" hidden>
       <div class="card center">
         <h2>¡Ya está el sorteo! 🎉</h2>
-        <p class="hint">¿Quién eres?</p>
         <div id="whoList" class="who-list"></div>
+        <form id="whoForm" hidden>
+          <p class="hint">En este móvil se apuntaron varias personas. Escribe <strong>tu nombre</strong> para abrir tu regalo.</p>
+          <input id="whoName" type="text" placeholder="Tu nombre" autocomplete="off" autocapitalize="words">
+          <p id="whoError" class="error" role="alert"></p>
+          <button class="btn big" type="submit">Abrir mi regalo</button>
+        </form>
       </div>
     </section>
 
@@ -179,6 +176,17 @@
           <p class="hint">Personas con el mismo código de móvil se apuntaron desde el mismo teléfono.</p>
           <p class="hint"><a id="adminSheet" target="_blank" rel="noopener">Abrir la hoja de datos en Drive</a></p>
         </div>
+        <div id="exclCard" class="card">
+          <h2>🚫 No pueden regalarse entre sí</h2>
+          <p class="hint">Por ejemplo, parejas o quienes viven juntos. El sorteo nunca hará que se regalen el uno al otro.</p>
+          <div id="exclForm" class="excl-form">
+            <select id="exclA" aria-label="Primera persona"></select>
+            <span aria-hidden="true">↔</span>
+            <select id="exclB" aria-label="Segunda persona"></select>
+            <button id="exclAdd" class="btn secondary" type="button">Añadir</button>
+          </div>
+          <ul id="exclList" class="chips"></ul>
+        </div>
         <form id="eventForm" class="card">
           <h2>Datos del evento</h2>
           <div class="grid">
@@ -200,6 +208,6 @@
 
   <div id="confetti" aria-hidden="true"></div>
   <footer>Hecho con <a id="heart" class="heart">❤️</a> y aceite de oliva virgen extra para la familia</footer>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>

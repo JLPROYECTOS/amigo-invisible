@@ -195,14 +195,33 @@
   $('addBorrowed').addEventListener('click', () => { clearTimeout(pollTimer); openRegister(true); });
 
   // --- ¿Quién eres? ---
+  // Un solo dueño: botón «Soy …». Móvil compartido: hay que escribir el nombre.
   function showWho(mine) {
-    if (mine.length === 1) {
-      $('whoList').replaceChildren(whoButton(mine[0], `Soy ${mine[0].nombre}`));
-    } else {
-      $('whoList').replaceChildren(...mine.map((p) => whoButton(p, p.nombre)));
-    }
+    const shared = mine.length > 1;
+    $('whoForm').hidden = !shared;
+    $('whoList').replaceChildren(...(shared ? [] : [whoButton(mine[0], `Soy ${mine[0].nombre}`)]));
+    $('whoName').value = '';
+    $('whoError').textContent = '';
     show('who');
+    if (shared) $('whoName').focus();
   }
+
+  const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+  $('whoForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const typed = norm($('whoName').value);
+    if (!typed) { $('whoError').textContent = 'Escribe tu nombre.'; return; }
+    const mine = status.mios;
+    // Nombre completo, o solo el primer nombre si no hay duda.
+    let p = mine.find((m) => norm(m.nombre) === typed);
+    if (!p) {
+      const byFirst = mine.filter((m) => norm(m.nombre).split(' ')[0] === typed);
+      if (byFirst.length === 1) p = byFirst[0];
+    }
+    if (!p) { $('whoError').textContent = 'Ese nombre no está apuntado en este móvil. Escríbelo igual que cuando te apuntaste.'; return; }
+    openGift(p);
+  });
 
   function whoButton(p, label) {
     const b = el('button', { className: 'who-btn', type: 'button' }, avatarImg(p.foto), el('span', { textContent: label }));
@@ -457,6 +476,8 @@
       return li;
     }));
 
+    renderExclusions(d);
+
     const ev = d.evento || {};
     if (document.activeElement?.form !== $('eventForm')) {
       $('evName').value = ev.nombre || '';
@@ -475,6 +496,55 @@
 
     adminTimer = setTimeout(adminLoad, 20000);
   }
+
+  // --- Parejas que no pueden regalarse entre sí ---
+  function renderExclusions(d) {
+    const byId = Object.fromEntries(d.registros.map((r) => [r.id, r.nombre]));
+    const editable = d.estado !== 'sorteado';
+    $('exclForm').hidden = !editable || d.registros.length < 2;
+
+    // No rehacer los desplegables mientras se están usando.
+    const busy = [$('exclA'), $('exclB')].includes(document.activeElement);
+    if (!busy) {
+      const prev = [$('exclA').value, $('exclB').value];
+      const opts = d.registros.map((r) => el('option', { value: r.id, textContent: r.nombre }));
+      $('exclA').replaceChildren(...opts.map((o) => o.cloneNode(true)));
+      $('exclB').replaceChildren(...opts.map((o) => o.cloneNode(true)));
+      if (byId[prev[0]]) $('exclA').value = prev[0];
+      if (byId[prev[1]]) $('exclB').value = prev[1];
+      if ($('exclA').value === $('exclB').value && d.registros.length > 1) {
+        $('exclB').selectedIndex = ($('exclA').selectedIndex + 1) % d.registros.length;
+      }
+    }
+
+    const items = (d.exclusiones || []).map(([a, b]) => {
+      const li = el('li', {}, `${byId[a] || '?'} ↔ ${byId[b] || '?'}`);
+      if (editable) {
+        const del = el('button', { className: 'icon-btn', type: 'button', title: 'Quitar', textContent: '✕' });
+        del.addEventListener('click', async () => {
+          try { await adminCall('quitarExclusion', { a, b }); } catch (err) { $('adminMsg').textContent = `Error: ${err.message}`; }
+          adminLoad();
+        });
+        li.append(del);
+      }
+      return li;
+    });
+    $('exclList').replaceChildren(...(items.length ? items : [el('li', { className: 'empty', textContent: 'Ninguna todavía' })]));
+  }
+
+  $('exclAdd').addEventListener('click', async () => {
+    const a = $('exclA').value, b = $('exclB').value;
+    if (!a || !b) return;
+    $('exclAdd').disabled = true;
+    try {
+      await adminCall('excluir', { a, b });
+      $('adminMsg').textContent = '';
+    } catch (err) {
+      $('adminMsg').textContent = `Error: ${err.message}`;
+    }
+    $('exclAdd').disabled = false;
+    adminLoad();
+  });
 
   $('adminLogin').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -506,8 +576,62 @@
     $('setupAdmin').href = $('setupAdmin').textContent = `${base}#admin`;
   });
 
+  // ---------- Olivar de la cabecera ----------
+  // Planta hileras de olivos siguiendo el borde de cada loma. Cada copa se mece
+  // con un retraso según su posición, como una ráfaga de aire que cruza el campo.
+  function plantarOlivos() {
+    const NS = 'http://www.w3.org/2000/svg';
+    const alturaBorde = (path) => {
+      const len = path.getTotalLength();
+      const pts = [];
+      for (let l = 0; l <= len; l += 2) pts.push(path.getPointAtLength(l));
+      return (x) => pts.reduce((best, p) => (Math.abs(p.x - x) < Math.abs(best.x - x) ? p : best)).y;
+    };
+    const arbol = (x, y, r, cls) => {
+      const g = document.createElementNS(NS, 'g');
+      g.setAttribute('class', 'arbol');
+      const tronco = document.createElementNS(NS, 'rect');
+      tronco.setAttribute('x', (x - r * 0.17).toFixed(1));
+      tronco.setAttribute('y', (y - r * 0.9).toFixed(1));
+      tronco.setAttribute('width', (r * 0.34).toFixed(1));
+      tronco.setAttribute('height', (r * 1.1).toFixed(1));
+      tronco.setAttribute('class', 'tronco');
+      const copa = document.createElementNS(NS, 'g');
+      copa.setAttribute('class', `copa-g ${cls}`);
+      // Copa de olivo: tres círculos solapados, algo irregular.
+      [[0, -1.25, 1], [-0.55, -1.0, 0.72], [0.55, -1.05, 0.75]].forEach(([dx, dy, k]) => {
+        const c = document.createElementNS(NS, 'circle');
+        c.setAttribute('cx', (x + dx * r).toFixed(1));
+        c.setAttribute('cy', (y + dy * r).toFixed(1));
+        c.setAttribute('r', (k * r * (0.9 + Math.random() * 0.2)).toFixed(2));
+        copa.append(c);
+      });
+      // La ráfaga va de izquierda a derecha.
+      copa.style.animationDelay = `${(-4 + (x / 400) * 2.2 + Math.random() * 0.3).toFixed(2)}s`;
+      copa.style.animationDuration = `${(3.6 + Math.random() * 0.8).toFixed(2)}s`;
+      g.append(tronco, copa);
+      return g;
+    };
+    const filas = (grupo, borde, opts) => {
+      const altura = alturaBorde(borde);
+      const frag = document.createDocumentFragment();
+      for (let fila = 0; fila < opts.filas; fila++) {
+        const desfase = fila % 2 ? opts.paso / 2 : 0;
+        for (let x = -opts.paso + desfase; x < 400 + opts.paso; x += opts.paso) {
+          const y = altura(Math.max(0, Math.min(400, x))) + opts.inicio + fila * opts.sep;
+          if (y > 132) continue;
+          frag.append(arbol(x + (Math.random() - 0.5) * 2, y, opts.r, opts.cls));
+        }
+      }
+      grupo.append(frag);
+    };
+    filas($('olivosLejos'), $('bordeLejos'), { filas: 4, paso: 13, sep: 7, inicio: 6, r: 2.9, cls: 'copa2' });
+    filas($('olivosCerca'), $('bordeCerca'), { filas: 4, paso: 19, sep: 11, inicio: 9, r: 4.4, cls: 'copa' });
+  }
+
   // ---------- Arranque ----------
   function start() {
+    try { plantarOlivos(); } catch { /* decorativo */ }
     // Acceso oculto al panel: el corazón del pie de página.
     if (EVENT_ID) $('heart').href = IS_ADMIN ? `?e=${EVENT_ID}` : `?e=${EVENT_ID}#admin`;
     if (!EVENT_ID) { show('home'); return; }

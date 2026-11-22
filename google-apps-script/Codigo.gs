@@ -34,6 +34,10 @@ function manejar(d) {
   const estado = PROPS.getProperty('estado') || 'abierto'; // abierto | cerrado | sorteado
   const filas = leer();
   const evento = JSON.parse(PROPS.getProperty('evento') || '{}');
+  // Parejas que no pueden regalarse entre sí: [[idA, idB], ...]
+  const exclusiones = JSON.parse(PROPS.getProperty('exclusiones') || '[]')
+    .filter((p) => filas.some((f) => f.id === p[0]) && filas.some((f) => f.id === p[1]));
+  const guardarExclusiones = (lista) => PROPS.setProperty('exclusiones', JSON.stringify(lista));
 
   switch (d.action) {
     case 'estado':
@@ -64,7 +68,7 @@ function manejar(d) {
       if (estado !== 'sorteado') return error('Todavía no se ha hecho el sorteo.');
       const yo = filas.find((f) => f.id === d.id && f.dispositivo === d.device);
       if (!yo) return error('Este móvil no registró a esa persona.');
-      const r = filas.find((f) => f.id === yo.regala_a);
+      const r = filas.find((f) => f.id === descifrar(yo.regala_a, yo.id));
       if (!r) return error('No se encuentra el resultado. Avisa a quien organiza.');
       return { ok: true, nombre: r.nombre, foto: r.foto, evento };
     }
@@ -76,8 +80,9 @@ function manejar(d) {
 
   switch (d.action) {
     case 'admin':
+      // Nunca se devuelve a quién le toca a cada uno: ni quien organiza lo ve.
       return {
-        ok: true, estado, evento,
+        ok: true, estado, evento, exclusiones,
         hoja: hojaCalculo().getUrl(),
         registros: filas.map((f) => ({
           id: f.id, nombre: f.nombre, foto: f.foto, terminal: f.terminal,
@@ -104,22 +109,34 @@ function manejar(d) {
       PROPS.setProperty('estado', 'abierto');
       return { ok: true };
 
+    case 'excluir': {
+      if (estado === 'sorteado') return error('El sorteo ya está hecho.');
+      const a = String(d.a || ''), b = String(d.b || '');
+      if (!filas.some((f) => f.id === a) || !filas.some((f) => f.id === b)) return error('Persona no encontrada.');
+      if (a === b) return error('Elige dos personas distintas.');
+      if (exclusiones.some((p) => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a))) return error('Esa pareja ya está añadida.');
+      exclusiones.push([a, b]);
+      guardarExclusiones(exclusiones);
+      return { ok: true };
+    }
+
+    case 'quitarExclusion': {
+      if (estado === 'sorteado') return error('El sorteo ya está hecho.');
+      guardarExclusiones(exclusiones.filter((p) => !((p[0] === d.a && p[1] === d.b) || (p[0] === d.b && p[1] === d.a))));
+      return { ok: true };
+    }
+
     case 'sortear': {
       if (estado === 'abierto') return error('Primero cierra la inscripción («Ya estamos todos»).');
       if (estado === 'sorteado') return error('El sorteo ya está hecho.');
       if (filas.length < 3) return error('Hacen falta al menos 3 personas.');
-      // Algoritmo de Sattolo: permutación en un único ciclo, nadie se regala a sí mismo.
-      const ids = filas.map((f) => f.id);
-      for (let i = ids.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * i);
-        const t = ids[i]; ids[i] = ids[j]; ids[j] = t;
-      }
-      const regala = {};
-      ids.forEach((id, i) => { regala[id] = ids[(i + 1) % ids.length]; });
+      const regala = sortear(filas.map((f) => f.id), exclusiones);
+      if (!regala) return error('Con estas parejas excluidas no hay ningún sorteo posible. Quita alguna.');
       const h = hoja();
-      filas.forEach((f) => { h.getRange(f.fila, 8).setValue(regala[f.id]); });
+      // Se guarda cifrado: abriendo la hoja no se puede saber a quién le toca cada uno.
+      filas.forEach((f) => { h.getRange(f.fila, 8).setValue(cifrar(regala[f.id], f.id)); });
       PROPS.setProperty('estado', 'sorteado');
-      return { ok: true, total: ids.length };
+      return { ok: true, total: filas.length };
     }
 
     case 'deshacer':
@@ -133,6 +150,7 @@ function manejar(d) {
       const f = filas.find((x) => x.id === d.id);
       if (!f) return error('No existe ese registro.');
       hoja().deleteRow(f.fila);
+      guardarExclusiones(exclusiones.filter((p) => p[0] !== f.id && p[1] !== f.id));
       return { ok: true };
     }
 
@@ -140,6 +158,7 @@ function manejar(d) {
       const h = hoja();
       if (h.getLastRow() > 1) h.deleteRows(2, h.getLastRow() - 1);
       PROPS.setProperty('estado', 'abierto');
+      guardarExclusiones([]);
       return { ok: true };
     }
   }
@@ -175,6 +194,62 @@ function leer() {
     terminal: String(r[4]), fecha: r[5] instanceof Date ? r[5].toISOString() : String(r[5]),
     prestado: r[6] === 'sí', regala_a: String(r[7]),
   }));
+}
+
+// ----- Sorteo -----
+// Asigna a cada persona otra distinta, respetando las parejas excluidas.
+// Backtracking con orden aleatorio: si existe solución, la encuentra.
+function sortear(ids, exclusiones) {
+  const prohibido = (a, b) => a === b || exclusiones.some((p) => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
+  const mezclar = (arr) => {
+    const x = arr.slice();
+    for (let i = x.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = x[i]; x[i] = x[j]; x[j] = t; }
+    return x;
+  };
+  const dadores = mezclar(ids);
+  const usado = {};
+  const res = {};
+  function paso(i) {
+    if (i === dadores.length) return true;
+    const g = dadores[i];
+    const opciones = mezclar(ids);
+    for (let k = 0; k < opciones.length; k++) {
+      const r = opciones[k];
+      if (usado[r] || prohibido(g, r)) continue;
+      usado[r] = true; res[g] = r;
+      if (paso(i + 1)) return true;
+      delete usado[r]; delete res[g];
+    }
+    return false;
+  }
+  return paso(0) ? res : null;
+}
+
+// ----- Cifrado del resultado -----
+// Clave aleatoria guardada en las propiedades del script (no en la hoja).
+function secreto() {
+  let s = PROPS.getProperty('secreto');
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); PROPS.setProperty('secreto', s); }
+  return s;
+}
+
+function xorBytes(bytes, clave) {
+  return bytes.map((b, i) => b ^ clave.charCodeAt(i % clave.length));
+}
+
+function cifrar(texto, sal) {
+  const bytes = Utilities.newBlob(String(texto)).getBytes();
+  return Utilities.base64Encode(xorBytes(bytes, secreto() + sal));
+}
+
+function descifrar(cifrado, sal) {
+  if (!cifrado) return '';
+  try {
+    const bytes = xorBytes(Utilities.base64Decode(String(cifrado)), secreto() + sal);
+    return Utilities.newBlob(bytes).getDataAsString();
+  } catch (_) {
+    return '';
+  }
 }
 
 // ----- Utilidades -----
