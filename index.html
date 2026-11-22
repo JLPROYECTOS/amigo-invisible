@@ -2,165 +2,176 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Amigo Invisible</title>
-  <meta name="description" content="Organiza un sorteo de amigo invisible: añade participantes, define exclusiones y envía a cada uno su resultado por correo.">
+  <meta name="description" content="Apúntate al amigo invisible, espera al sorteo y agita el móvil para descubrir a quién le regalas.">
+  <meta name="theme-color" content="#c8102e">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <header class="hero">
     <h1>🎁 Amigo Invisible</h1>
-    <p>Organiza el sorteo en un minuto y cada persona recibirá por correo a quién le toca regalar.</p>
+    <p id="eventLine"></p>
   </header>
 
-  <main id="app">
-    <!-- Vista del organizador -->
-    <section id="organizer">
-      <div class="card">
-        <h2>1. El evento</h2>
-        <div class="grid">
-          <label>Nombre del evento
-            <input id="eventName" type="text" placeholder="Navidad en familia" maxlength="60">
-          </label>
-          <label>Temática
-            <input id="theme" type="text" placeholder="Relax" maxlength="40">
-          </label>
-          <label>Presupuesto
-            <input id="budget" type="text" placeholder="Entre 20 € y 30 €" maxlength="30">
-          </label>
-          <label>Fecha de entrega
-            <input id="date" type="date">
-          </label>
-        </div>
-      </div>
+  <main>
+    <!-- Cargando -->
+    <section id="v-loading" class="view">
+      <div class="card center"><div class="spinner"></div><p class="hint">Cargando…</p></div>
+    </section>
 
-      <div class="card">
-        <h2>2. Participantes</h2>
-        <form id="addForm" class="row">
-          <input id="newName" type="text" placeholder="Nombre" maxlength="40" autocomplete="off" required>
-          <input id="newEmail" type="email" placeholder="correo@ejemplo.com" maxlength="100" autocomplete="off">
-          <button type="submit" class="btn">Añadir</button>
-        </form>
-        <p class="hint">Pulsa el círculo de cada persona para ponerle una foto. Las fotos se guardan solo en este navegador.</p>
-        <ul id="people" class="people"></ul>
-        <p id="peopleHint" class="hint"></p>
-        <input id="photoInput" type="file" accept="image/*" hidden>
+    <!-- Error general -->
+    <section id="v-error" class="view" hidden>
+      <div class="card center">
+        <p class="big-emoji">😕</p>
+        <p id="errorText"></p>
+        <button class="btn" type="button" onclick="location.reload()">Reintentar</button>
       </div>
+    </section>
 
-      <div class="card">
-        <h2>3. Exclusiones <span class="muted">(opcional)</span></h2>
-        <p class="hint">Parejas que no deben regalarse entre sí (por ejemplo, quienes viven juntos).</p>
-        <div class="row">
-          <select id="exA"></select>
-          <span class="muted">↔</span>
-          <select id="exB"></select>
-          <button id="addEx" class="btn secondary" type="button">Añadir</button>
-        </div>
-        <ul id="exclusions" class="chips"></ul>
+    <!-- Sin enlace de evento -->
+    <section id="v-home" class="view" hidden>
+      <div class="card center">
+        <p class="big-emoji">✉️</p>
+        <h2>Abre el enlace que te han mandado</h2>
+        <p class="hint">Para apuntarte al amigo invisible necesitas el enlace que se compartió en el grupo.</p>
       </div>
-
-      <details class="card" id="mailConfig">
-        <summary><h2>✉️ Configurar el envío de correos</h2></summary>
-        <p class="hint">Los correos se envían desde tu Gmail con un pequeño script de Google. Solo hay que configurarlo una vez:
-          sigue los pasos de <a href="https://github.com/JLPROYECTOS/amigo-invisible#enviar-los-correos-con-google-apps-script" target="_blank" rel="noopener">las instrucciones</a>
-          y pega aquí la dirección del script y tu clave.</p>
-        <div class="grid">
-          <label>URL del script (termina en /exec)
-            <input id="scriptUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
-          </label>
-          <label>Clave secreta
-            <input id="scriptKey" type="password" placeholder="La misma que pusiste en el script" autocomplete="off">
-          </label>
-        </div>
-        <div class="row">
-          <button id="testMail" class="btn secondary" type="button">Probar conexión</button>
-          <span id="testStatus" class="hint"></span>
+      <details class="card">
+        <summary><strong>¿Organizas tú?</strong></summary>
+        <p class="hint">Pega la URL de tu script de Google (termina en <code>/exec</code>) para obtener los enlaces. Instrucciones en el
+          <a href="https://github.com/JLPROYECTOS/amigo-invisible#readme" target="_blank" rel="noopener">README</a>.</p>
+        <input id="setupUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec">
+        <div id="setupLinks" class="links-box" hidden>
+          <p><strong>Enlace para el grupo:</strong><br><a id="setupGroup" target="_blank" rel="noopener"></a></p>
+          <p><strong>Tu panel (no lo compartas):</strong><br><a id="setupAdmin" target="_blank" rel="noopener"></a></p>
         </div>
       </details>
+    </section>
 
-      <div class="actions">
-        <button id="drawBtn" class="btn big" type="button">🎲 Hacer el sorteo</button>
-        <button id="resetBtn" class="btn ghost" type="button">Empezar de nuevo</button>
-      </div>
-      <p id="error" class="error" role="alert"></p>
-
-      <div id="results" class="card" hidden>
-        <h2>4. Avisa a cada persona</h2>
-        <div class="group-box">
-          <h3>👨‍👩‍👧‍👦 Un solo enlace para el grupo de WhatsApp</h3>
-          <p class="hint">Mándalo al grupo: cada uno lo abre, toca su nombre y ve solo a quién le regala. Su móvil recuerda quién es y no le deja mirar el de otro.
-            Quien no tenga móvil (márcalo arriba con «Sin móvil») puede verlo en el de otra persona.</p>
-          <div class="actions">
-            <a id="groupWa" class="btn big" target="_blank" rel="noopener">Enviar al grupo por WhatsApp</a>
-            <button id="groupCopy" class="btn secondary" type="button">Copiar enlace</button>
-          </div>
-        </div>
-        <p class="hint">O, si lo prefieres, envía los correos de una vez o el enlace individual de cada uno. Ni tú verás a quién le toca a cada persona 😉</p>
+    <!-- Registro -->
+    <section id="v-register" class="view" hidden>
+      <form id="regForm" class="card center">
+        <h2 id="regTitle">¡Apúntate!</h2>
+        <p id="regHint" class="hint">Escribe tu nombre y sube una foto tuya. Es la foto que verá quien te tenga que regalar.</p>
+        <label class="photo-pick">
+          <input id="regPhoto" type="file" accept="image/*" hidden>
+          <span id="regPhotoPreview" class="photo-preview">📷<small>Toca para elegir foto</small></span>
+        </label>
+        <input id="regName" type="text" placeholder="Tu nombre" maxlength="40" autocomplete="given-name" required>
+        <p id="regError" class="error" role="alert"></p>
         <div class="actions">
-          <button id="sendAll" class="btn big" type="button">✉️ Enviar los correos</button>
+          <button id="regSubmit" class="btn big" type="submit">Apuntarme</button>
+          <button id="regCancel" class="btn ghost" type="button" hidden>Cancelar</button>
         </div>
-        <p id="sendSummary" class="hint center"></p>
-        <ul id="links" class="links"></ul>
-        <div class="row">
-          <button id="revealBtn" class="btn secondary" type="button">📱 Revelar en este dispositivo</button>
-        </div>
+      </form>
+    </section>
+
+    <!-- Esperando a que estén todos -->
+    <section id="v-waiting" class="view" hidden>
+      <div class="card center">
+        <p class="big-emoji">🎄</p>
+        <h2>¡Ya estás dentro!</h2>
+        <div id="waitMine" class="mine"></div>
+        <p class="hint" id="waitCount"></p>
+        <p class="hint">Cuando estén todos, se cerrará la inscripción y se hará el sorteo. Vuelve a abrir este enlace entonces.</p>
+        <button id="addBorrowed" class="btn ghost" type="button">➕ Apuntar a alguien sin móvil</button>
       </div>
     </section>
 
-    <!-- Revelado uno a uno en el mismo dispositivo -->
-    <section id="passMode" hidden>
+    <!-- Inscripción cerrada, falta el sorteo -->
+    <section id="v-closed" class="view" hidden>
       <div class="card center">
-        <h2 id="passTitle"></h2>
-        <p id="passText" class="hint"></p>
-        <div id="passBox" hidden>
-          <img id="passPhoto" class="big-photo" alt="" hidden>
-          <div id="passName" class="reveal-box"></div>
+        <p class="big-emoji">⏳</p>
+        <h2>¡Ya estamos todos!</h2>
+        <div id="closedMine" class="mine"></div>
+        <p class="hint">Falta el sorteo. Esta página se actualizará sola.</p>
+      </div>
+    </section>
+
+    <!-- Móvil no registrado -->
+    <section id="v-notreg" class="view" hidden>
+      <div class="card center">
+        <p class="big-emoji">🙈</p>
+        <h2>Este móvil no está apuntado</h2>
+        <p class="hint">La inscripción ya está cerrada y desde este móvil no se apuntó a nadie. Cada persona solo puede ver su resultado en el móvil desde el que se apuntó.</p>
+      </div>
+    </section>
+
+    <!-- ¿Quién eres? -->
+    <section id="v-who" class="view" hidden>
+      <div class="card center">
+        <h2>¡Ya está el sorteo! 🎉</h2>
+        <p class="hint">¿Quién eres?</p>
+        <div id="whoList" class="who-list"></div>
+      </div>
+    </section>
+
+    <!-- El regalo -->
+    <section id="v-gift" class="view" hidden>
+      <div class="card center gift-card">
+        <h2 id="giftHello"></h2>
+        <div id="giftStage">
+          <button id="gift" class="gift" type="button" aria-label="Regalo">🎁</button>
+          <p id="giftHint" class="gift-hint">¡Agita el móvil para abrir el regalo!</p>
+          <div id="shakeBar" class="shake-bar"><span></span></div>
+          <button id="motionBtn" class="btn big" type="button" hidden>👋 Empezar</button>
+          <button id="tapOpen" class="btn ghost" type="button" hidden>Abrir tocando</button>
+        </div>
+        <div id="reveal" hidden>
+          <p class="hint">Te toca regalar a…</p>
+          <img id="revealPhoto" class="big-photo" alt="">
+          <div id="revealName" class="reveal-name"></div>
+          <p id="revealInfo" class="hint"></p>
+          <p class="hint">🤫 ¡Que no se entere nadie!</p>
         </div>
         <div class="actions">
-          <button id="passShow" class="btn big" type="button">Soy yo, mostrar</button>
-          <button id="passNext" class="btn big" type="button" hidden>Ocultar y pasar</button>
-          <button id="passExit" class="btn ghost" type="button">Salir</button>
+          <button id="giftBack" class="btn ghost" type="button" hidden>Ocultar</button>
         </div>
       </div>
     </section>
 
-    <!-- Vista del enlace de grupo -->
-    <section id="group" hidden>
-      <div class="card center">
-        <p class="muted" id="groupEvent"></p>
-        <div id="groupPick">
-          <h2>¿Quién eres?</h2>
-          <p class="hint">Toca tu nombre. ¡Sin trampas! Solo podrás ver el tuyo desde este móvil.</p>
-          <div id="groupNames" class="name-grid"></div>
+    <!-- Panel de organización -->
+    <section id="v-admin" class="view" hidden>
+      <form id="adminLogin" class="card center">
+        <h2>🔐 Panel de organización</h2>
+        <input id="adminKey" type="password" placeholder="Clave" autocomplete="current-password" required>
+        <p id="adminLoginError" class="error"></p>
+        <button class="btn" type="submit">Entrar</button>
+      </form>
+      <div id="adminPanel" hidden>
+        <div class="card">
+          <h2>Estado: <span id="adminState"></span></h2>
+          <div class="actions" id="adminActions"></div>
+          <p id="adminMsg" class="hint center"></p>
         </div>
-        <div id="groupConfirm" hidden>
-          <h2>¿Seguro que eres <span id="groupConfirmName"></span>?</h2>
-          <p class="hint">Después ya no podrás elegir otro nombre en este móvil.</p>
-          <div class="actions">
-            <button id="groupYes" class="btn big" type="button">Sí, soy yo</button>
-            <button id="groupNo" class="btn ghost" type="button">No, volver</button>
+        <div class="card">
+          <h2>Registrados (<span id="adminCount">0</span>)</h2>
+          <ul id="adminList" class="admin-list"></ul>
+          <p class="hint">Personas con el mismo código de móvil se apuntaron desde el mismo teléfono.</p>
+          <p class="hint"><a id="adminSheet" target="_blank" rel="noopener">Abrir la hoja de datos en Drive</a></p>
+        </div>
+        <form id="eventForm" class="card">
+          <h2>Datos del evento</h2>
+          <div class="grid">
+            <label>Nombre<input id="evName" maxlength="60" placeholder="Amigo Invisible"></label>
+            <label>Temática<input id="evTheme" maxlength="40" placeholder="Relax"></label>
+            <label>Presupuesto<input id="evBudget" maxlength="30" placeholder="Entre 20 € y 30 €"></label>
+            <label>Entrega<input id="evDate" maxlength="40" placeholder="25 de diciembre de 2026"></label>
           </div>
+          <div class="actions"><button class="btn secondary" type="submit">Guardar</button></div>
+        </form>
+        <div class="card center">
+          <p class="hint">Enlace para el grupo:</p>
+          <p><a id="adminGroupLink" target="_blank" rel="noopener"></a></p>
+          <a id="adminWa" class="btn" target="_blank" rel="noopener">Enviar al grupo por WhatsApp</a>
         </div>
-      </div>
-    </section>
-
-    <!-- Vista de quien abre un enlace secreto -->
-    <section id="secret" hidden>
-      <div class="card center">
-        <p class="muted" id="secretEvent"></p>
-        <h2>Hola, <span id="secretGiver"></span> 👋</h2>
-        <p>Pulsa el regalo para descubrir a quién le haces el regalo.</p>
-        <button id="giftBtn" class="gift" type="button" aria-label="Abrir regalo">🎁</button>
-        <div id="secretBox" class="reveal-box" hidden></div>
-        <p id="secretInfo" class="hint"></p>
-        <div id="secretExtra" class="actions"></div>
-        <p><a href="./" class="muted">Organizar mi propio sorteo</a></p>
       </div>
     </section>
   </main>
 
-  <footer>Hecho con ❤️ · Todo funciona en tu navegador.</footer>
-  <script src="app.js?v=3"></script>
+  <div id="confetti" aria-hidden="true"></div>
+  <footer>Hecho con ❤️ para la familia</footer>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

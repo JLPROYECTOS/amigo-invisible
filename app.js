@@ -1,112 +1,18 @@
 (() => {
   'use strict';
 
-  const STORAGE_KEY = 'amigo-invisible-v1';
   const $ = (id) => document.getElementById(id);
-  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const params = new URLSearchParams(location.search);
+  const EVENT_ID = (params.get('e') || '').replace(/[^\w-]/g, '');
+  const API = EVENT_ID ? `https://script.google.com/macros/s/${EVENT_ID}/exec` : '';
+  const IS_ADMIN = location.hash === '#admin';
 
-  // ---------- Estado ----------
-  const empty = () => ({
-    event: 'Amigo Invisible', theme: 'Relax', budget: 'Entre 20 € y 30 €', date: '2026-12-25',
-    people: [], exclusions: [], pairs: null,
-    scriptUrl: '', scriptKey: '', sent: {},
-  });
-  let state = Object.assign(empty(), load() || {});
-  // Migración: antes los participantes eran solo nombres.
-  state.people = state.people.map((p) => (typeof p === 'string' ? { name: p, email: '', photo: '' } : p));
+  // ---------- Utilidades ----------
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */ } },
+  };
 
-  function load() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
-  }
-  function save() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-    catch { $('error').textContent = 'No se ha podido guardar (¿demasiadas fotos?). Prueba con fotos más pequeñas.'; }
-  }
-  const names = () => state.people.map((p) => p.name);
-  const person = (name) => state.people.find((p) => p.name === name);
-
-  // ---------- Codificación de enlaces secretos ----------
-  // Ofusca el contenido para que el nombre no se lea a simple vista en la URL.
-  // No es cifrado fuerte: solo evita "spoilers" accidentales.
-  const KEY = 'regalo-sorpresa';
-  function encode(obj) {
-    const bytes = new TextEncoder().encode(JSON.stringify(obj));
-    let bin = '';
-    bytes.forEach((b, i) => { bin += String.fromCharCode(b ^ KEY.charCodeAt(i % KEY.length)); });
-    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  }
-  function decode(str) {
-    const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/'));
-    const bytes = Uint8Array.from(bin, (c, i) => c.charCodeAt(0) ^ KEY.charCodeAt(i % KEY.length));
-    return JSON.parse(new TextDecoder().decode(bytes));
-  }
-
-  // ---------- Sorteo ----------
-  function shuffle(arr) {
-    const a = arr.slice();
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-
-  function isExcluded(a, b) {
-    return state.exclusions.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
-  }
-
-  // Asigna a cada persona un receptor distinto de sí misma, respetando exclusiones.
-  // Backtracking con orden aleatorio: siempre encuentra solución si existe.
-  function draw(people) {
-    const givers = shuffle(people);
-    const used = new Set();
-    const result = {};
-    function solve(i) {
-      if (i === givers.length) return true;
-      const g = givers[i];
-      for (const r of shuffle(people)) {
-        if (r === g || used.has(r) || isExcluded(g, r)) continue;
-        used.add(r); result[g] = r;
-        if (solve(i + 1)) return true;
-        used.delete(r); delete result[g];
-      }
-      return false;
-    }
-    return solve(0) ? result : null;
-  }
-
-  // ---------- Fotos ----------
-  // Recorta la imagen en cuadrado y la reduce para que ocupe poco (~20 KB).
-  function resizePhoto(file, size = 240) {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const s = Math.min(img.width, img.height);
-        const canvas = document.createElement('canvas');
-        canvas.width = canvas.height = size;
-        canvas.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
-        URL.revokeObjectURL(img.src);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
-      };
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
-    });
-  }
-
-  let photoTarget = null;
-  $('photoInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    e.target.value = '';
-    if (!file || !photoTarget) return;
-    try {
-      person(photoTarget).photo = await resizePhoto(file);
-      save(); render();
-    } catch {
-      $('error').textContent = 'No se ha podido leer esa imagen.';
-    }
-  });
-
-  // ---------- Render organizador ----------
   function el(tag, props = {}, ...children) {
     const node = document.createElement(tag);
     Object.assign(node, props);
@@ -114,454 +20,498 @@
     return node;
   }
 
-  function avatar(p) {
-    const btn = el('button', {
-      className: `avatar${p.photo ? ' has-photo' : ''}`, type: 'button',
-      title: p.photo ? `Cambiar la foto de ${p.name}` : `Añadir foto de ${p.name}`,
-    });
-    if (p.photo) btn.append(el('img', { src: p.photo, alt: p.name }));
-    else btn.textContent = '📷';
-    btn.addEventListener('click', () => { photoTarget = p.name; $('photoInput').click(); });
-    return btn;
+  function show(view) {
+    document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== `v-${view}`; });
+    window.scrollTo(0, 0);
   }
 
-  function render() {
-    $('eventName').value = state.event;
-    $('budget').value = state.budget;
-    $('theme').value = state.theme;
-    $('date').value = state.date;
-    $('scriptUrl').value = state.scriptUrl;
-    $('scriptKey').value = state.scriptKey;
-
-    $('people').replaceChildren(...state.people.map((p) => {
-      const email = el('input', { type: 'email', value: p.email, placeholder: 'Añade su correo', title: `Correo de ${p.name}` });
-      email.addEventListener('change', () => {
-        p.email = email.value.trim();
-        email.classList.toggle('invalid', !!p.email && !EMAIL_RE.test(p.email));
-        delete state.sent[p.name];
-        save(); renderResults();
-      });
-      const del = el('button', { className: 'icon-btn', type: 'button', title: `Quitar a ${p.name}`, textContent: '✕' });
-      del.addEventListener('click', () => removePerson(p.name));
-      const noPhone = el('input', { type: 'checkbox', checked: !!p.noPhone });
-      noPhone.addEventListener('change', () => { p.noPhone = noPhone.checked; save(); renderResults(); });
-      const noPhoneLabel = el('label', { className: 'check', title: 'Podrá verlo en el móvil de otra persona sin bloquearlo' }, noPhone, 'Sin móvil');
-      const info = el('div', { className: 'info' }, el('strong', { textContent: p.name }), email, noPhoneLabel);
-      return el('li', {}, el('div', { className: 'person' }, avatar(p), info), del);
-    }));
-    const n = state.people.length;
-    const noEmail = state.people.filter((p) => !p.email).length;
-    $('peopleHint').textContent = n < 3
-      ? `Añade al menos 3 participantes (${n} de 3).`
-      : `${n} participantes${noEmail ? ` · ${noEmail} sin correo` : ''}.`;
-
-    const options = names().map((p) => el('option', { value: p, textContent: p }));
-    $('exA').replaceChildren(...options.map((o) => o.cloneNode(true)));
-    $('exB').replaceChildren(...options.map((o) => o.cloneNode(true)));
-    if (n > 1) $('exB').selectedIndex = 1;
-
-    $('exclusions').replaceChildren(...state.exclusions.map(([a, b], i) => {
-      const del = el('button', { className: 'icon-btn', type: 'button', title: 'Quitar exclusión', textContent: '✕' });
-      del.addEventListener('click', () => { state.exclusions.splice(i, 1); invalidate(); });
-      return el('li', {}, `${a} ↔ ${b}`, del);
-    }));
-
-    renderResults();
+  function fail(msg) {
+    $('errorText').textContent = msg;
+    show('error');
   }
 
-  function linkFor(giver) {
-    const payload = { g: giver, r: state.pairs[giver], e: state.event, t: state.theme, b: state.budget, d: state.date };
-    const base = location.href.split('#')[0];
-    return `${base}#s=${encode(payload)}`;
-  }
-
-  // Un único enlace con todo el sorteo: cada persona elige su nombre al abrirlo.
-  function groupLink() {
-    if (!state.drawId) { state.drawId = Math.random().toString(36).slice(2, 10); save(); }
-    const n = names();
-    const payload = {
-      id: state.drawId, n, r: n.map((g) => n.indexOf(state.pairs[g])),
-      x: state.people.map((p, i) => (p.noPhone ? i : -1)).filter((i) => i >= 0),
-      e: state.event, t: state.theme, b: state.budget, d: state.date,
-    };
-    return `${location.href.split('#')[0]}#g=${encode(payload)}`;
-  }
-
-  function renderResults() {
-    const box = $('results');
-    if (!state.pairs) { box.hidden = true; return; }
-    box.hidden = false;
-    const gUrl = groupLink();
-    const gMsg = `🎁 ¡Ya está hecho el sorteo del amigo invisible${state.event ? ` "${state.event}"` : ''}! `
-      + `Abrid este enlace, tocad vuestro nombre y veréis a quién le regaláis (¡sin trampas!): ${gUrl}`;
-    $('groupWa').href = `https://wa.me/?text=${encodeURIComponent(gMsg)}`;
-    $('groupCopy').onclick = async () => {
-      try { await navigator.clipboard.writeText(gMsg); $('groupCopy').textContent = '¡Copiado!'; }
-      catch { prompt('Copia este mensaje:', gMsg); }
-      setTimeout(() => { $('groupCopy').textContent = 'Copiar enlace'; }, 1500);
-    };
-    $('links').replaceChildren(...state.people.map(({ name, email }) => {
-      const url = linkFor(name);
-      const copy = el('button', { className: 'btn small secondary', type: 'button', textContent: 'Copiar enlace' });
-      copy.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(url); copy.textContent = '¡Copiado!'; }
-        catch { prompt('Copia este enlace:', url); }
-        setTimeout(() => { copy.textContent = 'Copiar enlace'; }, 1500);
-      });
-      const msg = `Hola ${name}, aquí tienes tu amigo invisible${state.event ? ` de "${state.event}"` : ''} 🎁: ${url}`;
-      const wa = el('a', {
-        className: 'btn small', href: `https://wa.me/?text=${encodeURIComponent(msg)}`,
-        target: '_blank', rel: 'noopener', textContent: 'WhatsApp',
-      });
-      const sent = state.sent[name];
-      const status = el('span', {
-        className: `status${sent ? ' ok' : ''}`,
-        textContent: !email ? 'Sin correo' : sent ? `✓ Correo enviado a ${email}` : email,
-      });
-      status.dataset.name = name;
-      return el('li', {}, el('span', { className: 'name', textContent: name }), copy, wa, status);
-    }));
-  }
-
-  function setStatus(name, text, cls = '') {
-    const s = document.querySelector(`.status[data-name="${CSS.escape(name)}"]`);
-    if (s) { s.textContent = text; s.className = `status ${cls}`; }
-  }
-
-  // ---------- Acciones ----------
-  function invalidate() {
-    state.pairs = null;
-    state.sent = {};
-    $('error').textContent = '';
-    $('sendSummary').textContent = '';
-    save(); render();
-  }
-
-  function addPerson(name, email) {
-    name = name.trim().replace(/\s+/g, ' ');
-    email = email.trim();
-    if (!name) return false;
-    if (state.people.some((p) => p.name.toLowerCase() === name.toLowerCase())) {
-      $('error').textContent = `"${name}" ya está en la lista.`;
-      return false;
+  // Identificador de este móvil (se guarda en el navegador).
+  function deviceId() {
+    let id = store.get('amigo-device');
+    if (!id) {
+      id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`).replace(/[^\w]/g, '');
+      store.set('amigo-device', id);
     }
-    if (email && !EMAIL_RE.test(email)) {
-      $('error').textContent = `El correo "${email}" no parece válido.`;
-      return false;
-    }
-    state.people.push({ name, email, photo: '' });
-    invalidate();
-    return true;
+    return id;
   }
 
-  function removePerson(name) {
-    state.people = state.people.filter((p) => p.name !== name);
-    state.exclusions = state.exclusions.filter(([a, b]) => a !== name && b !== name);
-    invalidate();
+  // Descripción legible del terminal: «iPhone · Safari», «Android SM-A515F · Chrome»…
+  function terminal() {
+    const ua = navigator.userAgent;
+    let dev = 'Otro';
+    if (/iPhone/.test(ua)) dev = 'iPhone';
+    else if (/iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) dev = 'iPad';
+    else if (/Android/.test(ua)) {
+      const model = (ua.match(/Android [\d.]+; ([^;)]+)/) || [])[1];
+      dev = `Android${model && model !== 'K' ? ` ${model.trim()}` : ''}`;
+    } else if (/Windows/.test(ua)) dev = 'Ordenador Windows';
+    else if (/Mac OS X/.test(ua)) dev = 'Mac';
+    else if (/Linux/.test(ua)) dev = 'Linux';
+    let br = 'Navegador';
+    if (/WhatsApp/i.test(ua)) br = 'WhatsApp';
+    else if (/SamsungBrowser/.test(ua)) br = 'Samsung Internet';
+    else if (/EdgA?\/|Edg\//.test(ua)) br = 'Edge';
+    else if (/CriOS|Chrome\//.test(ua)) br = 'Chrome';
+    else if (/FxiOS|Firefox\//.test(ua)) br = 'Firefox';
+    else if (/Safari\//.test(ua)) br = 'Safari';
+    return `${dev} · ${br}`;
   }
 
-  $('addForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    if (addPerson($('newName').value, $('newEmail').value)) {
-      $('newName').value = '';
-      $('newEmail').value = '';
-    }
-    $('newName').focus();
-  });
-
-  $('addEx').addEventListener('click', () => {
-    const a = $('exA').value, b = $('exB').value;
-    if (!a || !b) return;
-    if (a === b) { $('error').textContent = 'Elige dos personas distintas.'; return; }
-    if (isExcluded(a, b)) { $('error').textContent = 'Esa exclusión ya existe.'; return; }
-    state.exclusions.push([a, b]);
-    invalidate();
-  });
-
-  [['eventName', 'event'], ['theme', 'theme'], ['budget', 'budget'], ['date', 'date'], ['scriptUrl', 'scriptUrl'], ['scriptKey', 'scriptKey']]
-    .forEach(([id, key]) => {
-      $(id).addEventListener('input', (e) => { state[key] = e.target.value.trim(); save(); if (state.pairs && !key.startsWith('script')) renderResults(); });
-    });
-
-  $('drawBtn').addEventListener('click', () => {
-    $('error').textContent = '';
-    if (state.people.length < 3) { $('error').textContent = 'Necesitas al menos 3 participantes.'; return; }
-    if (state.pairs && Object.keys(state.sent).length &&
-        !confirm('Ya se enviaron correos de este sorteo. Si lo repites, tendrás que enviarlos otra vez. ¿Seguir?')) return;
-    const pairs = draw(names());
-    if (!pairs) {
-      $('error').textContent = 'Con estas exclusiones no hay ningún sorteo posible. Quita alguna e inténtalo de nuevo.';
-      return;
-    }
-    state.pairs = pairs;
-    state.drawId = '';
-    state.sent = {};
-    $('sendSummary').textContent = '';
-    save(); renderResults();
-    $('results').scrollIntoView({ behavior: 'smooth' });
-  });
-
-  $('resetBtn').addEventListener('click', () => {
-    if (!confirm('¿Borrar participantes, fotos, exclusiones y sorteo? (Se mantiene la configuración del correo)')) return;
-    const { scriptUrl, scriptKey } = state;
-    state = Object.assign(empty(), { scriptUrl, scriptKey });
-    invalidate();
-  });
-
-  // ---------- Envío de correos (Google Apps Script) ----------
-  function formatDate(iso) {
-    if (!iso) return '';
-    const d = new Date(`${iso}T12:00:00`);
-    return isNaN(d) ? iso : d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  async function api(action, data = {}) {
+    // text/plain evita la petición previa CORS, que Google Apps Script no admite.
+    const res = await fetch(API, { method: 'POST', body: JSON.stringify({ action, device: deviceId(), ...data }) });
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error || 'Error desconocido');
+    return json;
   }
 
-  async function callScript(payload) {
-    // text/plain evita la petición previa CORS, que Apps Script no admite.
-    const res = await fetch(state.scriptUrl, { method: 'POST', body: JSON.stringify({ key: state.scriptKey, ...payload }) });
-    return res.json();
+  function eventLine(ev) {
+    if (!ev) return;
+    const bits = [ev.tematica && `Temática: ${ev.tematica}`, ev.presupuesto, ev.fecha && `Entrega: ${ev.fecha}`].filter(Boolean);
+    $('eventLine').textContent = [ev.nombre, bits.join(' · ')].filter(Boolean).join(' — ');
+    if (ev.nombre) document.title = `${ev.nombre} · Amigo Invisible`;
   }
 
-  function mailConfigOk() {
-    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(state.scriptUrl) || !state.scriptKey) {
-      $('mailConfig').open = true;
-      $('mailConfig').scrollIntoView({ behavior: 'smooth' });
-      $('testStatus').textContent = 'Falta la URL del script (debe terminar en /exec) o la clave.';
-      $('testStatus').className = 'hint fail';
-      return false;
-    }
-    return true;
-  }
-
-  $('testMail').addEventListener('click', async () => {
-    if (!mailConfigOk()) return;
-    $('testStatus').textContent = 'Probando…';
-    $('testStatus').className = 'hint';
-    try {
-      const r = await callScript({ test: true });
-      $('testStatus').textContent = r.ok
-        ? `✓ Conectado. Te quedan ${r.quota} correos hoy.`
-        : `✕ ${r.error}`;
-      $('testStatus').className = `hint ${r.ok ? 'ok' : 'fail'}`;
-    } catch {
-      $('testStatus').textContent = '✕ No se pudo conectar. Revisa la URL y que el script esté publicado para «Cualquier usuario».';
-      $('testStatus').className = 'hint fail';
-    }
-  });
-
-  $('sendAll').addEventListener('click', async () => {
-    if (!state.pairs || !mailConfigOk()) return;
-    const pending = state.people.filter((p) => p.email && !state.sent[p.name]);
-    const missing = state.people.filter((p) => !p.email).map((p) => p.name);
-    if (!pending.length) {
-      $('sendSummary').textContent = missing.length
-        ? `No hay correos pendientes. Sin correo: ${missing.join(', ')}.`
-        : 'Todos los correos ya se han enviado.';
-      return;
-    }
-    if (!confirm(`Se enviarán ${pending.length} correo(s).${missing.length ? `\nSin correo (no recibirán nada): ${missing.join(', ')}.` : ''}\n¿Enviar?`)) return;
-
-    const btn = $('sendAll');
-    btn.disabled = true;
-    let ok = 0, fail = 0;
-    for (const p of pending) {
-      setStatus(p.name, 'Enviando…');
-      const receiver = person(state.pairs[p.name]);
-      try {
-        const r = await callScript({
-          to: p.email,
-          giver: p.name,
-          receiver: receiver.name,
-          photo: receiver.photo || '',
-          event: state.event,
-          theme: state.theme,
-          budget: state.budget,
-          date: formatDate(state.date),
-          link: linkFor(p.name),
-        });
-        if (!r.ok) throw new Error(r.error);
-        state.sent[p.name] = true;
-        save();
-        setStatus(p.name, `✓ Correo enviado a ${p.email}`, 'ok');
-        ok++;
-      } catch (err) {
-        setStatus(p.name, `✕ No se pudo enviar: ${err.message || 'error de conexión'}`, 'fail');
-        fail++;
-      }
-    }
-    btn.disabled = false;
-    $('sendSummary').textContent = `${ok} enviado(s)${fail ? `, ${fail} con error (pulsa otra vez para reintentar)` : ''}.`
-      + (missing.length ? ` Sin correo: ${missing.join(', ')}.` : '');
-  });
-
-  // ---------- Modo "pasar el móvil" ----------
-  let passIndex = 0;
-  function showPass() {
-    const { name } = state.people[passIndex];
-    $('passTitle').textContent = `Turno de ${name}`;
-    $('passText').textContent = `Pasa el dispositivo a ${name}. Nadie más debe mirar.`;
-    $('passBox').hidden = true;
-    $('passShow').hidden = false;
-    $('passNext').hidden = true;
-  }
-  $('revealBtn').addEventListener('click', () => {
-    passIndex = 0;
-    $('organizer').hidden = true; $('passMode').hidden = false;
-    showPass();
-  });
-  $('passShow').addEventListener('click', () => {
-    const { name } = state.people[passIndex];
-    const receiver = person(state.pairs[name]);
-    $('passText').textContent = `${name}, le regalas a:`;
-    $('passName').textContent = receiver.name;
-    $('passPhoto').hidden = !receiver.photo;
-    if (receiver.photo) $('passPhoto').src = receiver.photo;
-    $('passBox').hidden = false;
-    $('passShow').hidden = true;
-    $('passNext').hidden = false;
-    $('passNext').textContent = passIndex < state.people.length - 1 ? 'Ocultar y pasar' : 'Terminar';
-  });
-  $('passNext').addEventListener('click', () => {
-    passIndex++;
-    if (passIndex >= state.people.length) { exitPass(); return; }
-    showPass();
-  });
-  function exitPass() { $('passMode').hidden = true; $('organizer').hidden = false; $('passPhoto').src = ''; }
-  $('passExit').addEventListener('click', exitPass);
-
-  // ---------- Vista de enlace secreto ----------
-  function showOnly(id) {
-    ['organizer', 'passMode', 'secret', 'group'].forEach((s) => { $(s).hidden = s !== id; });
-  }
-
-  function badLink() {
-    showOnly('organizer'); render();
-    $('error').textContent = 'El enlace no es válido.';
-  }
-
-  // Enlace de grupo. Cada móvil queda "bloqueado" para su dueño (me), pero puede
-  // prestarse a las personas marcadas como "sin móvil" sin bloquearse para ellas.
-  function showGroup(data) {
-    const lockKey = `amigo-grupo-${data.id}`;
-    const noPhone = (data.x || []).map((i) => data.n[i]).filter(Boolean);
-    let lock = { me: '', lent: [] };
-    try {
-      const raw = localStorage.getItem(lockKey);
-      if (raw) lock = Object.assign(lock, JSON.parse(raw));
-    } catch { /* sin almacenamiento o formato antiguo */ }
-    const saveLock = () => { try { localStorage.setItem(lockKey, JSON.stringify(lock)); } catch { /* sin almacenamiento */ } };
-    if (lock.me && !data.n.includes(lock.me)) lock.me = '';
-
-    const secretFor = (name) => {
-      const i = data.n.indexOf(name);
-      return { g: name, r: data.n[data.r[i]], e: data.e, t: data.t, b: data.b, d: data.d };
-    };
-    const lendable = () => noPhone.filter((n) => n !== lock.me);
-
-    function lendButton() {
-      if (!lendable().length) return [];
-      const b = el('button', { className: 'btn ghost', type: 'button', textContent: '📱 Prestar el móvil a alguien sin móvil' });
-      b.addEventListener('click', () => pick(lendable(), 'lend'));
-      return [b];
-    }
-
-    function showMine() {
-      showSecret(secretFor(lock.me), lendButton());
-    }
-
-    function showLent(name) {
-      const done = el('button', { className: 'btn big secondary', type: 'button', textContent: 'Ocultar y devolver el móvil' });
-      done.addEventListener('click', () => {
-        if (lock.me) { showMine(); return; }
-        pick(data.n, 'self');
-      });
-      showSecret(secretFor(name), [done]);
-    }
-
-    // mode: 'self' = elegir quién soy; 'lend' = elegir a quién presto el móvil.
-    function pick(list, mode) {
-      showOnly('group');
-      $('groupEvent').textContent = data.e || 'Amigo Invisible';
-      $('groupPick').hidden = false;
-      $('groupConfirm').hidden = true;
-      $('groupPick').querySelector('h2').textContent = mode === 'lend' ? '¿A quién le prestas el móvil?' : '¿Quién eres?';
-      $('groupPick').querySelector('.hint').textContent = mode === 'lend'
-        ? 'Dale el móvil y que toque su nombre. Tú no mires 🙈'
-        : noPhone.length
-          ? `Toca tu nombre. Solo podrás ver el tuyo desde este móvil. Si no tienes móvil (${noPhone.join(', ')}), pide uno prestado.`
-          : 'Toca tu nombre. ¡Sin trampas! Solo podrás ver el tuyo desde este móvil.';
-      const buttons = list.map((name) => {
-        const b = el('button', { className: 'btn', type: 'button', textContent: name });
-        b.addEventListener('click', () => confirmPick(name, mode, list));
-        return b;
-      });
-      if (mode === 'lend') {
-        const back = el('button', { className: 'btn ghost', type: 'button', textContent: '← Volver' });
-        back.addEventListener('click', showMine);
-        buttons.push(back);
-      }
-      $('groupNames').replaceChildren(...buttons);
-    }
-
-    function confirmPick(name, mode, list) {
-      const borrowed = mode === 'lend' || noPhone.includes(name);
-      $('groupConfirmName').textContent = name;
-      $('groupConfirm').querySelector('.hint').textContent = borrowed
-        ? 'Este móvil seguirá siendo de su dueño: solo verás el tuyo y luego lo ocultas.'
-        : 'Después ya no podrás elegir otro nombre en este móvil.';
-      $('groupPick').hidden = true;
-      $('groupConfirm').hidden = false;
-      $('groupYes').onclick = () => {
-        if (borrowed) {
-          if (!lock.lent.includes(name)) lock.lent.push(name);
-          saveLock();
-          showLent(name);
-        } else {
-          lock.me = name;
-          saveLock();
-          showMine();
-        }
+  // Recorta en cuadrado y reduce la foto hasta que quepa en una celda de la hoja.
+  function resizePhoto(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(img.width, img.height);
+        const canvas = document.createElement('canvas');
+        let size = 260, q = 0.8, out = '';
+        do {
+          canvas.width = canvas.height = size;
+          canvas.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+          out = canvas.toDataURL('image/jpeg', q);
+          q -= 0.1; if (q < 0.45) { size -= 40; q = 0.7; }
+        } while (out.length > 45000 && size > 80);
+        URL.revokeObjectURL(img.src);
+        resolve(out);
       };
-      $('groupNo').onclick = () => pick(list, mode);
-    }
-
-    if (lock.me) showMine();
-    else pick(data.n, 'self');
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
   }
 
-  function route() {
-    const m = location.hash.match(/^#([sg])=([\w-]+)$/);
-    if (!m) { showOnly('organizer'); render(); return; }
-    let data;
-    try { data = decode(m[2]); } catch { data = null; }
-    if (m[1] === 'g') {
-      if (!data || !data.id || !Array.isArray(data.n) || !Array.isArray(data.r) || data.n.length !== data.r.length) { badLink(); return; }
-      showGroup(data);
+  function avatarImg(src, cls = 'avatar') {
+    return src ? el('img', { className: cls, src, alt: '' }) : el('span', { className: cls, textContent: '🙂' });
+  }
+
+  // ---------- Flujo de participante ----------
+  let status = null;
+  let pollTimer = null;
+
+  async function load() {
+    clearTimeout(pollTimer);
+    try {
+      status = await api('estado');
+    } catch (e) {
+      fail(`No se ha podido conectar con el sorteo. ${e.message}`);
       return;
     }
-    if (!data || !data.g || !data.r) { badLink(); return; }
-    showSecret(data);
+    eventLine(status.evento);
+    const mine = status.mios;
+
+    if (status.estado === 'abierto') {
+      if (!mine.length) { openRegister(false); return; }
+      renderMine($('waitMine'), mine);
+      $('waitCount').textContent = `Hay ${status.total} persona${status.total === 1 ? '' : 's'} apuntada${status.total === 1 ? '' : 's'}.`;
+      show('waiting');
+      pollTimer = setTimeout(load, 20000);
+    } else if (status.estado === 'cerrado') {
+      if (!mine.length) { show('notreg'); return; }
+      renderMine($('closedMine'), mine);
+      show('closed');
+      pollTimer = setTimeout(load, 15000);
+    } else {
+      if (!mine.length) { show('notreg'); return; }
+      showWho(mine);
+    }
   }
 
-  function showSecret(data, extra = []) {
-    showOnly('secret');
-    $('secretExtra').replaceChildren(...extra);
-    $('secretEvent').textContent = data.e || 'Amigo Invisible';
-    $('secretGiver').textContent = data.g;
-    $('secretBox').hidden = true;
-    $('giftBtn').hidden = false;
-    const info = [];
-    if (data.t) info.push(`Temática: ${data.t}`);
-    if (data.b) info.push(`Presupuesto: ${data.b}`);
-    if (data.d) info.push(`Fecha: ${formatDate(data.d)}`);
-    $('secretInfo').textContent = '';
-    $('giftBtn').onclick = () => {
-      $('giftBtn').hidden = true;
-      $('secretBox').textContent = `🎉 ${data.r} 🎉`;
-      $('secretBox').hidden = false;
-      $('secretInfo').textContent = info.join(' · ');
+  function renderMine(box, mine) {
+    box.replaceChildren(...mine.map((p) => el('div', { className: 'mine-item' }, avatarImg(p.foto), el('span', { textContent: p.nombre }))));
+  }
+
+  // --- Registro ---
+  let regPhoto = '';
+  let regBorrowed = false;
+
+  function openRegister(borrowed) {
+    regBorrowed = borrowed;
+    regPhoto = '';
+    $('regForm').reset();
+    $('regError').textContent = '';
+    $('regPhotoPreview').replaceChildren('📷', el('small', { textContent: 'Toca para elegir foto' }));
+    $('regTitle').textContent = borrowed ? 'Apuntar a alguien sin móvil' : '¡Apúntate!';
+    $('regHint').textContent = borrowed
+      ? 'Escribe su nombre y sube una foto suya. Luego verá su resultado en este móvil.'
+      : 'Escribe tu nombre y sube una foto tuya. Es la foto que verá quien te tenga que regalar.';
+    $('regName').placeholder = borrowed ? 'Su nombre' : 'Tu nombre';
+    $('regSubmit').textContent = borrowed ? 'Apuntar' : 'Apuntarme';
+    $('regCancel').hidden = !borrowed;
+    show('register');
+  }
+
+  $('regPhoto').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      regPhoto = await resizePhoto(file);
+      $('regPhotoPreview').replaceChildren(el('img', { src: regPhoto, alt: '' }));
+      $('regError').textContent = '';
+    } catch {
+      $('regError').textContent = 'No se ha podido leer esa imagen. Prueba con otra.';
+    }
+  });
+
+  $('regForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const nombre = $('regName').value.trim().replace(/\s+/g, ' ');
+    if (!nombre) { $('regError').textContent = 'Escribe el nombre.'; return; }
+    if (!regPhoto) { $('regError').textContent = 'Falta la foto: toca el círculo para elegirla.'; return; }
+    $('regSubmit').disabled = true;
+    $('regError').textContent = '';
+    try {
+      await api('registrar', { nombre, foto: regPhoto, terminal: terminal(), prestado: regBorrowed });
+      await load();
+    } catch (err) {
+      $('regError').textContent = err.message;
+    } finally {
+      $('regSubmit').disabled = false;
+    }
+  });
+
+  $('regCancel').addEventListener('click', load);
+  $('addBorrowed').addEventListener('click', () => { clearTimeout(pollTimer); openRegister(true); });
+
+  // --- ¿Quién eres? ---
+  function showWho(mine) {
+    if (mine.length === 1) {
+      $('whoList').replaceChildren(whoButton(mine[0], `Soy ${mine[0].nombre}`));
+    } else {
+      $('whoList').replaceChildren(...mine.map((p) => whoButton(p, p.nombre)));
+    }
+    show('who');
+  }
+
+  function whoButton(p, label) {
+    const b = el('button', { className: 'who-btn', type: 'button' }, avatarImg(p.foto), el('span', { textContent: label }));
+    b.addEventListener('click', () => openGift(p));
+    return b;
+  }
+
+  // --- El regalo ---
+  const SHAKES_NEEDED = 4;
+  let result = null;
+  let shakes = 0;
+  let motionSeen = false;
+  let fallbackTimer = null;
+  let lastShake = 0;
+  let last = null;
+
+  function onMotion(e) {
+    const a = e.accelerationIncludingGravity || e.acceleration;
+    if (!a || a.x == null) return;
+    motionSeen = true;
+    if (last) {
+      const delta = Math.abs(a.x - last.x) + Math.abs(a.y - last.y) + Math.abs(a.z - last.z);
+      const now = Date.now();
+      if (delta > 22 && now - lastShake > 280) {
+        lastShake = now;
+        registerShake();
+      }
+    }
+    last = { x: a.x, y: a.y, z: a.z };
+  }
+
+  function registerShake() {
+    if (shakes >= SHAKES_NEEDED) return;
+    shakes++;
+    const g = $('gift');
+    g.classList.remove('jolt'); void g.offsetWidth; g.classList.add('jolt');
+    g.style.setProperty('--grow', 1 + shakes * 0.08);
+    $('shakeBar').firstElementChild.style.width = `${(shakes / SHAKES_NEEDED) * 100}%`;
+    if (navigator.vibrate) navigator.vibrate(60);
+    if (shakes >= SHAKES_NEEDED) openPresent();
+  }
+
+  function startMotion() {
+    window.addEventListener('devicemotion', onMotion);
+    clearTimeout(fallbackTimer);
+    // Si en unos segundos no llega ningún dato del sensor (ordenador, permiso denegado…), se ofrece abrir tocando.
+    fallbackTimer = setTimeout(() => {
+      if (!motionSeen) {
+        $('giftHint').textContent = 'No detecto el movimiento del móvil. Toca el regalo varias veces para abrirlo.';
+        $('tapOpen').hidden = true;
+        $('gift').dataset.tap = '1';
+      }
+    }, 4000);
+  }
+
+  function stopMotion() {
+    window.removeEventListener('devicemotion', onMotion);
+    clearTimeout(fallbackTimer);
+  }
+
+  async function openGift(p) {
+    result = null; shakes = 0; motionSeen = false; last = null;
+    $('giftHello').textContent = `${p.nombre}, tu regalo 🎁`;
+    $('giftStage').hidden = false;
+    $('reveal').hidden = true;
+    $('giftBack').hidden = true;
+    $('gift').dataset.tap = '';
+    $('gift').style.setProperty('--grow', 1);
+    $('gift').className = 'gift';
+    $('shakeBar').firstElementChild.style.width = '0';
+    $('giftHint').textContent = 'Cargando…';
+    $('motionBtn').hidden = true;
+    $('tapOpen').hidden = true;
+    show('gift');
+
+    try {
+      result = await api('resultado', { id: p.id });
+    } catch (err) {
+      fail(err.message);
+      return;
+    }
+    $('giftHint').textContent = '¡Agita el móvil para abrir el regalo!';
+
+    // iPhone pide permiso para usar el sensor de movimiento, y solo tras un toque.
+    if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+      $('giftHint').textContent = 'Toca «Empezar» y después agita el móvil.';
+      $('motionBtn').hidden = false;
+    } else {
+      startMotion();
+    }
+  }
+
+  $('motionBtn').addEventListener('click', async () => {
+    $('motionBtn').hidden = true;
+    try {
+      const r = await DeviceMotionEvent.requestPermission();
+      if (r === 'granted') {
+        $('giftHint').textContent = '¡Agita el móvil para abrir el regalo!';
+        startMotion();
+        return;
+      }
+    } catch { /* sin permiso */ }
+    $('giftHint').textContent = 'Sin permiso para el movimiento. Toca el regalo varias veces para abrirlo.';
+    $('gift').dataset.tap = '1';
+  });
+
+  $('gift').addEventListener('click', () => {
+    if ($('gift').dataset.tap === '1' && result) registerShake();
+  });
+
+  function openPresent() {
+    stopMotion();
+    const g = $('gift');
+    g.classList.add('burst');
+    setTimeout(() => {
+      $('giftStage').hidden = true;
+      $('revealPhoto').src = result.foto;
+      $('revealName').textContent = result.nombre;
+      const ev = result.evento || {};
+      $('revealInfo').textContent = [ev.tematica && `Temática: ${ev.tematica}`, ev.presupuesto && `Presupuesto: ${ev.presupuesto}`, ev.fecha && `Entrega: ${ev.fecha}`]
+        .filter(Boolean).join(' · ');
+      $('reveal').hidden = false;
+      $('giftBack').hidden = false;
+      confetti();
+      if (navigator.vibrate) navigator.vibrate([80, 60, 160]);
+    }, 450);
+  }
+
+  $('giftBack').addEventListener('click', () => {
+    $('revealPhoto').src = '';
+    result = null;
+    showWho(status.mios);
+  });
+
+  function confetti() {
+    const box = $('confetti');
+    const items = ['🎉', '✨', '🎊', '⭐', '🎁', '❤️'];
+    box.replaceChildren(...Array.from({ length: 40 }, () => {
+      const s = el('span', { textContent: items[Math.floor(Math.random() * items.length)] });
+      s.style.left = `${Math.random() * 100}%`;
+      s.style.animationDelay = `${Math.random() * 0.6}s`;
+      s.style.animationDuration = `${2 + Math.random() * 1.5}s`;
+      s.style.fontSize = `${16 + Math.random() * 20}px`;
+      return s;
+    }));
+    setTimeout(() => box.replaceChildren(), 4000);
+  }
+
+  // ---------- Panel de organización ----------
+  const ADMIN_KEY_STORE = `amigo-admin-${EVENT_ID}`;
+  let adminKey = '';
+  let adminTimer = null;
+
+  function groupLink() {
+    return `${location.origin}${location.pathname}?e=${EVENT_ID}`;
+  }
+
+  async function adminCall(action, data = {}) {
+    return api(action, { key: adminKey, ...data });
+  }
+
+  async function adminLoad() {
+    clearTimeout(adminTimer);
+    let d;
+    try {
+      d = await adminCall('admin');
+    } catch (err) {
+      if (/clave/i.test(err.message)) {
+        $('adminPanel').hidden = true; $('adminLogin').hidden = false;
+        $('adminLoginError').textContent = err.message;
+        return;
+      }
+      $('adminMsg').textContent = `Error: ${err.message}`;
+      return;
+    }
+    store.set(ADMIN_KEY_STORE, adminKey);
+    $('adminLogin').hidden = true;
+    $('adminPanel').hidden = false;
+    eventLine(d.evento);
+
+    const labels = { abierto: '🟢 Inscripción abierta', cerrado: '🟡 Inscripción cerrada', sorteado: '🎉 Sorteo hecho' };
+    $('adminState').textContent = labels[d.estado] || d.estado;
+    $('adminCount').textContent = d.registros.length;
+    $('adminSheet').href = d.hoja;
+
+    const btn = (text, cls, fn, confirmText) => {
+      const b = el('button', { className: `btn ${cls}`, type: 'button', textContent: text });
+      b.addEventListener('click', async () => {
+        if (confirmText && !confirm(confirmText)) return;
+        b.disabled = true;
+        $('adminMsg').textContent = '';
+        try { await fn(); } catch (err) { $('adminMsg').textContent = `Error: ${err.message}`; }
+        await adminLoad();
+      });
+      return b;
     };
+    const actions = [];
+    if (d.estado === 'abierto') {
+      actions.push(btn('✅ Ya estamos todos', 'big', () => adminCall('cerrar'),
+        `¿Cerrar la inscripción con ${d.registros.length} personas? Nadie más podrá apuntarse.`));
+    } else if (d.estado === 'cerrado') {
+      actions.push(btn('🎲 Sortear', 'big', async () => {
+        const r = await adminCall('sortear');
+        $('adminMsg').textContent = `¡Sorteo hecho entre ${r.total} personas! Avisa al grupo para que abran el enlace.`;
+      }, '¿Hacer el sorteo ahora?'));
+      actions.push(btn('Reabrir inscripción', 'ghost', () => adminCall('reabrir')));
+    } else {
+      actions.push(btn('Deshacer sorteo', 'ghost', () => adminCall('deshacer'),
+        '¿Deshacer el sorteo? Si alguien ya ha visto su resultado, se perderá y habrá que volver a sortear.'));
+    }
+    actions.push(btn('Borrar todo', 'ghost danger', () => adminCall('reiniciar'),
+      '¿Borrar TODOS los registros y empezar de cero? No se puede deshacer.'));
+    $('adminActions').replaceChildren(...actions);
+
+    // Color por móvil para ver de un vistazo quién se apuntó desde el mismo terminal.
+    const palette = ['#c8102e', '#146b3a', '#1d4ed8', '#b45309', '#7c3aed', '#0e7490', '#be185d', '#4d7c0f'];
+    const colors = {};
+    d.registros.forEach((r) => { if (!(r.movil in colors)) colors[r.movil] = palette[Object.keys(colors).length % palette.length]; });
+    const owner = {};
+    d.registros.forEach((r) => { if (!r.prestado && !owner[r.movil]) owner[r.movil] = r.nombre; });
+
+    $('adminList').replaceChildren(...d.registros.map((r) => {
+      const when = new Date(r.fecha);
+      const meta = [
+        r.terminal,
+        `Móvil ${r.movil}`,
+        r.prestado && owner[r.movil] ? `prestado por ${owner[r.movil]}` : r.prestado ? 'móvil prestado' : '',
+        isNaN(when) ? '' : when.toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      ].filter(Boolean).join(' · ');
+      const li = el('li', {}, avatarImg(r.foto),
+        el('div', { className: 'info' }, el('strong', { textContent: r.nombre }), el('small', { textContent: meta })));
+      li.style.borderLeftColor = colors[r.movil];
+      if (d.estado !== 'sorteado') {
+        const del = el('button', { className: 'icon-btn', type: 'button', title: `Quitar a ${r.nombre}`, textContent: '✕' });
+        del.addEventListener('click', async () => {
+          if (!confirm(`¿Quitar a ${r.nombre} del sorteo?`)) return;
+          try { await adminCall('borrar', { id: r.id }); } catch (err) { $('adminMsg').textContent = `Error: ${err.message}`; }
+          adminLoad();
+        });
+        li.append(del);
+      }
+      return li;
+    }));
+
+    const ev = d.evento || {};
+    if (document.activeElement?.form !== $('eventForm')) {
+      $('evName').value = ev.nombre || '';
+      $('evTheme').value = ev.tematica || '';
+      $('evBudget').value = ev.presupuesto || '';
+      $('evDate').value = ev.fecha || '';
+    }
+
+    const link = groupLink();
+    $('adminGroupLink').href = link;
+    $('adminGroupLink').textContent = link;
+    const msg = d.estado === 'sorteado'
+      ? `🎉 ¡Ya está el sorteo del amigo invisible! Abrid el enlace desde el mismo móvil con el que os apuntasteis y agitadlo: ${link}`
+      : `🎁 ¡Amigo invisible! Apuntaos con vuestro nombre y una foto en este enlace. Si alguien no tiene móvil, que lo apunte otra persona desde el suyo: ${link}`;
+    $('adminWa').href = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+
+    adminTimer = setTimeout(adminLoad, 20000);
   }
 
-  window.addEventListener('hashchange', route);
-  route();
+  $('adminLogin').addEventListener('submit', (e) => {
+    e.preventDefault();
+    adminKey = $('adminKey').value.trim();
+    $('adminLoginError').textContent = '';
+    adminLoad();
+  });
+
+  $('eventForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await adminCall('evento', {
+        evento: { nombre: $('evName').value, tematica: $('evTheme').value, presupuesto: $('evBudget').value, fecha: $('evDate').value },
+      });
+      $('adminMsg').textContent = 'Datos del evento guardados.';
+    } catch (err) {
+      $('adminMsg').textContent = `Error: ${err.message}`;
+    }
+    adminLoad();
+  });
+
+  // ---------- Página sin evento: ayuda para organizar ----------
+  $('setupUrl').addEventListener('input', (e) => {
+    const m = e.target.value.trim().match(/^https:\/\/script\.google\.com\/macros\/s\/([\w-]+)\/exec/);
+    $('setupLinks').hidden = !m;
+    if (!m) return;
+    const base = `${location.origin}${location.pathname}?e=${m[1]}`;
+    $('setupGroup').href = $('setupGroup').textContent = base;
+    $('setupAdmin').href = $('setupAdmin').textContent = `${base}#admin`;
+  });
+
+  // ---------- Arranque ----------
+  function start() {
+    if (!EVENT_ID) { show('home'); return; }
+    if (IS_ADMIN) {
+      show('admin');
+      adminKey = store.get(ADMIN_KEY_STORE) || '';
+      if (adminKey) adminLoad();
+      return;
+    }
+    show('loading');
+    load();
+  }
+
+  window.addEventListener('hashchange', () => location.reload());
+  document.addEventListener('visibilitychange', () => {
+    // Al volver a la app, refresca el estado (por si ya se ha cerrado o sorteado).
+    // Solo en las pantallas de espera, para no borrar un formulario a medias.
+    const waiting = !$('v-waiting').hidden || !$('v-closed').hidden;
+    if (document.visibilityState === 'visible' && EVENT_ID && !IS_ADMIN && waiting) load();
+  });
+  start();
 })();

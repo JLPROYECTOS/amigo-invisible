@@ -1,48 +1,40 @@
 # 🎁 Amigo Invisible
 
-App web para organizar un sorteo de amigo invisible y enviar a cada participante, por correo, a quién le toca regalar.
+App web para hacer el amigo invisible en familia: cada uno se apunta desde su móvil con nombre y foto, quien organiza cierra la inscripción y sortea, y cada participante agita el móvil para abrir su regalo y ver la foto de la persona a la que le regala.
 
-👉 **https://jlproyectos.github.io/amigo-invisible/**
+👉 **https://jlproyectos.github.io/amigo-invisible/** (se abre con el enlace del evento: `?e=…`)
 
-## Funciones
+## Cómo funciona
 
-- Datos del evento: nombre, temática, presupuesto y fecha de entrega.
-- Participantes con **nombre, correo y foto** (mínimo 3).
-- **Exclusiones**: parejas que no pueden regalarse entre sí.
-- Sorteo aleatorio en el que nadie se regala a sí mismo y se respetan las exclusiones.
-- **Un solo enlace para el grupo de WhatsApp**: cada persona lo abre, toca su nombre y ve solo el suyo. El móvil recuerda a su dueño y no deja ver el de otro. Quien esté marcado como «Sin móvil» puede verlo en un móvil prestado sin bloquearlo.
-- **Envío por correo** a cada participante con el nombre y la foto de la persona a la que le regala.
-- **Enlaces secretos** para compartir por WhatsApp, y modo **«pasar el móvil»** para revelarlo en un solo dispositivo.
+1. **Inscripción:** se comparte el enlace en el grupo de WhatsApp. Cada persona escribe su nombre y sube una foto. Queda registrado desde qué móvil se apuntó (modelo y navegador, y un código por móvil). Desde un mismo móvil se puede apuntar también a quien no tenga móvil.
+2. **Panel de organización:** es el mismo enlace terminado en `#admin` y pide una clave. Muestra la lista de inscritos con su foto, móvil y hora, los datos del evento y los botones **«Ya estamos todos»** y **«Sortear»**.
+3. **Revelación:** cada persona abre el enlace en el móvil con el que se apuntó y elige quién es (si en ese móvil se apuntó a más de una persona). Aparece un regalo moviéndose; al agitar el móvil se abre y muestra la foto y el nombre de la persona a la que regala.
 
-### Privacidad
+Protecciones:
+- Un resultado solo se puede ver desde el móvil donde se apuntó esa persona.
+- Con la inscripción cerrada nadie más puede apuntarse.
+- Sortear, cerrar o borrar exige la clave del panel.
+- El sorteo hace un único ciclo: nadie se regala a sí mismo.
 
-- Participantes, correos y fotos se guardan **solo en el navegador** de quien organiza (`localStorage`). No se suben a GitHub.
-- Las fotos se recortan y se reducen (240×240 px) antes de guardarse.
-- Los enlaces secretos llevan el resultado ofuscado en la URL para evitar spoilers accidentales; no es cifrado fuerte.
+## Dónde se guardan los datos
 
-## Enviar los correos con Google Apps Script
+En una hoja de cálculo **«Amigo Invisible - datos»** en el Google Drive de quien organiza. La gestiona el script [`google-apps-script/Codigo.gs`](google-apps-script/Codigo.gs), publicado como aplicación web de Google Apps Script.
 
-GitHub Pages no puede enviar correos, así que se usa un pequeño script gratuito de Google. Los correos salen de la cuenta de Gmail donde instales el script. **Si no quieres que salgan de tu correo personal, crea una cuenta de Gmail nueva solo para el amigo invisible** (por ejemplo, `amigoinvisible.familia@gmail.com`) y haz estos pasos con ella. Los participantes verán como remitente «Amigo Invisible».
+> El identificador de cada móvil se guarda en su navegador. Si alguien borra los datos del navegador, o abre el enlace en otro navegador distinto al que usó para apuntarse, no podrá ver su resultado: que lo abra siempre desde el mismo sitio (por ejemplo, desde WhatsApp).
 
-1. Con la cuenta que enviará los correos, entra en **https://script.google.com** y pulsa **Nuevo proyecto**.
-2. Borra lo que haya y pega el contenido de [`google-apps-script/Codigo.gs`](google-apps-script/Codigo.gs).
-3. Cambia `CAMBIA-ESTA-CLAVE` por una clave tuya (por ejemplo, `turron-2026-xyz`) y guarda (💾).
-4. Pulsa **Implementar → Nueva implementación**. En el engranaje elige **Aplicación web** y configura:
-   - **Ejecutar como:** Yo
-   - **Quién tiene acceso:** Cualquier usuario
-5. Pulsa **Implementar** y autoriza los permisos. Google avisará de que la app no está verificada: pulsa **Configuración avanzada → Ir a … (no seguro)**. Es normal, porque el script es tuyo.
-6. Copia la **URL de la aplicación web** (termina en `/exec`).
-7. En la web del amigo invisible, abre **✉️ Configurar el envío de correos**, pega la URL y la clave, y pulsa **Probar conexión**.
+## Instalar el script (solo quien organiza)
 
-Gmail permite unos 100 correos al día con una cuenta gratuita.
+1. En https://script.google.com crea un proyecto nuevo, pega el contenido de `Codigo.gs` y cambia `CLAVE_ADMIN` por una clave tuya.
+2. **Implementar → Nueva implementación → Aplicación web**, con **Ejecutar como: Yo** y **Quién tiene acceso: Cualquier usuario**. Autoriza los permisos.
+3. Abre la web sin parámetros, despliega **«¿Organizas tú?»** y pega la URL que termina en `/exec`. Te dará el enlace para el grupo y el de tu panel.
 
-> Si cambias el script, vuelve a **Implementar → Gestionar implementaciones → Editar → Nueva versión** para que se apliquen los cambios.
+Si cambias el script: **Implementar → Gestionar implementaciones → Editar → Nueva versión**. Así la URL no cambia.
 
 ## Archivos
 
 | Archivo | Contenido |
 | --- | --- |
-| `index.html` | Estructura de la página |
-| `styles.css` | Estilos (modo claro y oscuro) |
-| `app.js` | Sorteo, fotos, envío de correos y almacenamiento |
-| `google-apps-script/Codigo.gs` | Script de Google que envía los correos |
+| `index.html` | Pantallas: inscripción, espera, ¿quién eres?, regalo y panel |
+| `styles.css` | Estilos y animaciones (modo claro y oscuro) |
+| `app.js` | Lógica de la web: fotos, sensor de movimiento y llamadas al script |
+| `google-apps-script/Codigo.gs` | Script de Google: base de datos en Drive y sorteo |
