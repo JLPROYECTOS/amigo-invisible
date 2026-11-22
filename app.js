@@ -321,14 +321,24 @@
       $('giftStage').hidden = true;
       $('revealPhoto').src = result.foto;
       $('revealName').textContent = result.nombre;
+      const letter = initialOf(result.nombre);
+      $('revealLetter').textContent = letter;
+      $('revealLetterText').textContent = letter;
       const ev = result.evento || {};
-      $('revealInfo').textContent = [ev.tematica && `Temática: ${ev.tematica}`, ev.presupuesto && `Presupuesto: ${ev.presupuesto}`, ev.fecha && `Entrega: ${ev.fecha}`]
+      $('revealInfo').textContent = [ev.presupuesto && `Presupuesto: ${ev.presupuesto}`, ev.fecha && `Entrega: ${ev.fecha}`]
         .filter(Boolean).join(' · ');
       $('reveal').hidden = false;
       $('giftBack').hidden = false;
       confetti();
       if (navigator.vibrate) navigator.vibrate([80, 60, 160]);
     }, 450);
+  }
+
+  // Temática: el regalo empieza por la inicial del nombre (sin tilde; la Ñ se respeta).
+  function initialOf(name) {
+    const ch = [...String(name).trim()].find((c) => /\p{L}/u.test(c)) || '?';
+    const up = ch.toUpperCase();
+    return up === 'Ñ' ? up : up.normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
   $('giftBack').addEventListener('click', () => {

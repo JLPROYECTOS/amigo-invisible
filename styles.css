@@ -203,6 +203,21 @@ label { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; color
   animation: pop .6s cubic-bezier(.2, 1.4, .4, 1);
 }
 .reveal-name { font-size: clamp(2rem, 9vw, 2.8rem); font-weight: 800; color: var(--accent); margin: 10px 0 6px; animation: pop .6s .1s both; }
+.letter-box {
+  display: flex; align-items: center; gap: 14px; text-align: left;
+  background: var(--chip); border: 2px dashed var(--accent-2); border-radius: 16px;
+  padding: 12px 16px; margin: 6px auto 12px; max-width: 340px; animation: pop .6s .25s both;
+}
+.letter-box p { margin: 0; font-size: 1rem; }
+.letter-box strong { color: var(--accent); font-size: 1.15rem; }
+.letter {
+  flex: none; width: 64px; height: 64px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: "Fraunces", Georgia, serif; font-weight: 800; font-size: 2.2rem; line-height: 1;
+  color: var(--accent-2-ink);
+  background: radial-gradient(circle at 35% 30%, #f3d36a, var(--accent-2) 65%, #9c7408);
+  box-shadow: 0 4px 14px rgba(201, 154, 22, .4);
+}
 @keyframes pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 #confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }
